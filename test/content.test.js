@@ -12,9 +12,13 @@ function createCandidateCell() {
     tagName: "SPAN",
     textContent: "\u00a0",
   }));
-  const candidateContainer = {
+  let candidateContainer = {
     children: spans,
     dataset: { scfCandidates: "true" },
+    removed: false,
+    remove() {
+      this.removed = true;
+    },
   };
   const cell = {
     button: null,
@@ -23,7 +27,9 @@ function createCandidateCell() {
       return selector === "button[data-x][data-y]" ? this.button : null;
     },
     querySelectorAll(selector) {
-      return selector === "div" ? [candidateContainer] : [];
+      return selector === "div" && !candidateContainer.removed
+        ? [candidateContainer]
+        : [];
     },
     setCoordinates(x, y) {
       this.button = {
@@ -31,6 +37,34 @@ function createCandidateCell() {
         dataset: { x: String(x), y: String(y) },
         textContent: "",
       };
+    },
+    setValue(value) {
+      this.button.childNodes = [{ nodeType: 3, textContent: String(value) }];
+      this.button.textContent = String(value);
+    },
+    replaceCandidateSpans(marks) {
+      candidateContainer.children = marks.map((textContent) => ({
+        tagName: "SPAN",
+        textContent,
+      }));
+      return candidateContainer.children;
+    },
+    replaceCandidateContainer(marks) {
+      const removedContainer = candidateContainer;
+      candidateContainer = {
+        children: marks.map((textContent) => ({
+          tagName: "SPAN",
+          textContent,
+        })),
+        dataset: { scfCandidates: "true" },
+        removed: false,
+        remove() {
+          this.removed = true;
+        },
+      };
+      this.spans = candidateContainer.children;
+      removedContainer.removed = true;
+      return { removedContainer, replacementSpans: candidateContainer.children };
     },
   };
   return cell;
@@ -70,8 +104,10 @@ function createContentEnvironment({
   const messageListeners = [];
   const storageListeners = [];
   const timers = [];
+  const intervals = [];
   const candidateCalculationCalls = [];
   const windowListeners = {};
+  const location = { href: "https://example.test/puzzle" };
 
   class FakeMutationObserver {
     constructor(callback) {
@@ -134,10 +170,12 @@ function createContentEnvironment({
     documentListeners,
     console,
     document: documentRoot,
+    location,
     window: {
       addEventListener(type, listener) {
         windowListeners[type] = listener;
       },
+      location,
       queueMicrotask,
       setTimeout(callback, delay) {
         timers.push({ callback, delay });
@@ -145,6 +183,10 @@ function createContentEnvironment({
           callback();
         }
         return timers.length;
+      },
+      setInterval(callback, delay) {
+        intervals.push({ callback, delay });
+        return intervals.length;
       },
     },
   };
@@ -187,6 +229,8 @@ function createContentEnvironment({
     chrome,
     documentListeners,
     documentRoot,
+    intervals,
+    location,
     messageListeners,
     observers,
     replacePuzzle,
@@ -202,6 +246,12 @@ function sendMessage(listener, message) {
   return new Promise((resolve) => {
     listener(message, {}, resolve);
   });
+}
+
+function getTableObserver(environment) {
+  return environment.observers.find(
+    (observer) => observer.target === environment.table,
+  );
 }
 
 test("content script fills marks and responds to extension commands", async () => {
@@ -299,4 +349,121 @@ test("content script refreshes repeatedly after the paused-game Continue button"
   assert.equal(environment.candidateCalculationCalls.length, 6);
   assert.equal(nextCells[0][1].spans[1].textContent, "\u00a0");
   assert.equal(nextCells[0][1].spans[2].textContent, "3");
+});
+
+test("content script preserves a manually removed owned candidate after refreshes", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const manuallyRemovedMark = environment.cells[0][1].spans[1];
+  manuallyRemovedMark.textContent = "\u00a0";
+
+  getTableObserver(environment).callback([{ target: manuallyRemovedMark }]);
+  assert.equal(manuallyRemovedMark.textContent, "\u00a0");
+
+  await sendMessage(environment.messageListeners[0], { type: "fill" });
+  assert.equal(manuallyRemovedMark.textContent, "\u00a0");
+  assert.equal(environment.cells[0][1].spans[2].textContent, "3");
+});
+
+test("content script recalculates standard candidates after a solved-value update", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const solvedCell = environment.cells[0][1];
+  solvedCell.setValue(2);
+
+  getTableObserver(environment).callback([{ target: solvedCell.button }]);
+
+  assert.equal(environment.cells[0][2].spans[1].textContent, "\u00a0");
+  assert.equal(environment.cells[0][2].spans[2].textContent, "3");
+});
+
+test("content script reapplies manual exclusions after candidate spans are replaced", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  cell.spans[1].textContent = "\u00a0";
+  const observer = getTableObserver(environment);
+  observer.callback([{ target: cell.spans[1] }]);
+
+  const replacementSpans = cell.replaceCandidateSpans(
+    Array.from({ length: 9 }, (_, index) =>
+      index === 0 ? "\u00a0" : String(index + 1),
+    ),
+  );
+  observer.callback([{ target: cell }]);
+
+  assert.equal(replacementSpans[1].textContent, "\u00a0");
+  assert.equal(replacementSpans[2].textContent, "3");
+});
+
+test("content script remembers a removal when React replaces its owned container", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  const observer = getTableObserver(environment);
+  cell.spans[1].textContent = "\u00a0";
+  const { removedContainer, replacementSpans } = cell.replaceCandidateContainer(
+    Array.from({ length: 9 }, (_, index) =>
+      index === 0 ? "\u00a0" : String(index + 1),
+    ),
+  );
+
+  observer.callback([{ target: cell, removedNodes: [removedContainer] }]);
+
+  assert.equal(replacementSpans[1].textContent, "\u00a0");
+  assert.equal(replacementSpans[2].textContent, "3");
+});
+
+test("content script resets manual exclusions for a replacement puzzle", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  cell.spans[1].textContent = "\u00a0";
+  getTableObserver(environment).callback([{ target: cell.spans[1] }]);
+
+  const nextCells = environment.replacePuzzle(1);
+  environment.observers.find(
+    (observer) => observer.target === environment.documentRoot.documentElement,
+  ).callback([]);
+
+  assert.equal(nextCells[0][1].spans[1].textContent, "2");
+});
+
+test("content script resets retained-grid exclusions when the route URL changes", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  assert.deepEqual(
+    environment.intervals.map((interval) => interval.delay),
+    [250],
+  );
+  const cell = environment.cells[0][1];
+  const observer = getTableObserver(environment);
+  const removeCandidate = () => {
+    cell.spans[1].textContent = "\u00a0";
+    observer.callback([{ target: cell.spans[1] }]);
+    environment.runPendingTimers();
+    assert.equal(cell.spans[1].textContent, "\u00a0");
+  };
+  const navigate = (url, notify) => {
+    removeCandidate();
+    environment.location.href = url;
+    notify();
+    assert.deepEqual(environment.timers.map((timer) => timer.delay), [50]);
+    environment.runPendingTimers();
+    assert.equal(cell.spans[1].textContent, "2");
+  };
+
+  navigate(
+    "https://example.test/push",
+    () => environment.intervals[0].callback(),
+  );
+  navigate(
+    "https://example.test/back",
+    () => environment.windowListeners.popstate(),
+  );
+  navigate(
+    "https://example.test/back#notes",
+    () => environment.windowListeners.hashchange(),
+  );
 });
