@@ -1,0 +1,15 @@
+{
+  "background": {
+    "scripts": ["src/background.js"],
+    "persistent": false
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sudoku-candidate-filler@example.invalid",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
