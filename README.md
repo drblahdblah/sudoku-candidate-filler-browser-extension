@@ -31,6 +31,22 @@ candidate marks update automatically. Clicking the extension's toolbar icon
 also refreshes candidates without opening a popup, so it does not pause the
 game.
 
+### Manual candidate eliminations
+
+Click an extension-rendered mini-digit to hide that candidate for its cell.
+You can also focus a visible mini-digit and press Enter or Space. Eliminations
+are intentionally one-way: once removed, the empty mini-digit slot is no
+longer interactive so pointer input reaches the puzzle's native cell button.
+The extension keeps exclusions by the cell's puzzle coordinates, so they
+survive automatic refreshes and site re-renders while the current puzzle
+remains open. They reset when the puzzle or URL changes.
+
+The Age's keypad is intentionally not used for manual eliminations. Its
+currently supported grid markup does not expose a stable, candidate-mode-only
+keypad control that can be distinguished from entering a solved number.
+Guessing keypad selectors could change puzzle values, so direct clicks on the
+extension-owned `data-scf-candidates` marks are the supported safe interaction.
+
 ## Development and packages
 
 This project has no runtime dependencies. Run the candidate-calculation tests

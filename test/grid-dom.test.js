@@ -46,10 +46,30 @@ function createCandidateContainer() {
     children: [],
     className: "erBN0",
     dataset: {},
+    style: {},
     append(child) {
       this.children.push(child);
     },
     remove() {},
+  };
+}
+
+function createCandidateSpan() {
+  const attributes = new Map();
+  return {
+    tagName: "SPAN",
+    textContent: "",
+    style: {},
+    tabIndex: -1,
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
+    getAttribute(name) {
+      return attributes.get(name) ?? null;
+    },
   };
 }
 
@@ -59,7 +79,7 @@ function createEmptyButtonCell(x, y) {
     createElement(tagName) {
       return tagName === "div"
         ? createCandidateContainer()
-        : { tagName: "SPAN", textContent: "" };
+        : createCandidateSpan();
     },
   };
   const button = {
@@ -259,6 +279,31 @@ test("creates a native-style candidate container for an empty button without one
     getCandidateSpans(cells[0][0]).map((span) => span.textContent),
     ["1", "\u00a0", "3", "\u00a0", "\u00a0", "\u00a0", "\u00a0", "\u00a0", "9"],
   );
+});
+
+test("enables pointer and keyboard interaction only on visible owned candidate marks", () => {
+  const cells = Array.from({ length: 9 }, () =>
+    Array.from({ length: 9 }, () => createCandidateCell()),
+  );
+  cells[0][0] = createEmptyButtonCell(0, 0);
+  const candidates = Array.from({ length: 9 }, () => Array(9).fill(null));
+  candidates[0][0] = [1, 3, 9];
+
+  renderCandidates(cells, candidates);
+
+  const [container] = cells[0][0].querySelectorAll("div");
+  assert.equal(container.style.pointerEvents, "none");
+  for (const [index, span] of container.children.entries()) {
+    const isActive = [1, 3, 9].includes(index + 1);
+    assert.equal(span.style.pointerEvents, isActive ? "auto" : "none");
+    assert.equal(span.style.cursor, isActive ? "pointer" : "");
+    assert.equal(span.tabIndex, isActive ? 0 : -1);
+    assert.equal(span.getAttribute("role"), isActive ? "button" : null);
+    assert.equal(
+      span.getAttribute("aria-label"),
+      isActive ? `Eliminate candidate ${index + 1}` : null,
+    );
+  }
 });
 
 test("does not read a single candidate inside a button as a solved cell value", () => {
