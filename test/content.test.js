@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
+const SudokuAgeUi = require("../src/age-ui.js");
 const SudokuCandidates = require("../src/candidates.js");
 const SudokuGridDom = require("../src/grid-dom.js");
 
@@ -163,6 +164,7 @@ function createContentEnvironment({
       },
     },
   };
+  let pencilButton = null;
   const documentRoot = {
     documentElement: {},
     activeElement: null,
@@ -170,11 +172,18 @@ function createContentEnvironment({
       documentListeners[type] = listener;
     },
     querySelectorAll(selector) {
-      return selector === "table" ? [activeTable] : [];
+      if (selector === "table") {
+        return [activeTable];
+      }
+      if (selector === "button, [role='button']") {
+        return pencilButton ? [pencilButton] : [];
+      }
+      return [];
     },
   };
   const context = {
     MutationObserver: FakeMutationObserver,
+    SudokuAgeUi,
     SudokuCandidates: {
       calculateCandidates(grid) {
         candidateCalculationCalls.push(grid);
@@ -257,6 +266,9 @@ function createContentEnvironment({
     observers,
     replacePuzzle,
     runPendingTimers,
+    setPencilButton(button) {
+      pencilButton = button;
+    },
     storageListeners,
     table,
     timers,
@@ -539,6 +551,15 @@ test("content script does not intercept unowned candidate marks", async () => {
 });
 
 function clickPuzzleCell(environment, cell) {
+  // Match The Age marking the focused cell as selected for cell-then-digit.
+  for (const row of environment.cells) {
+    for (const other of row) {
+      if (other?.button) {
+        other.button["aria-selected"] = "false";
+      }
+    }
+  }
+  cell.select();
   environment.documentListeners.click({
     target: {
       closest(selector) {
@@ -551,10 +572,59 @@ function clickPuzzleCell(environment, cell) {
   });
 }
 
+function createPencilModeButton({ ariaPressed = null } = {}) {
+  const attributes = new Map();
+  if (ariaPressed != null) {
+    attributes.set("aria-pressed", ariaPressed);
+  }
+  attributes.set("aria-label", "Pencil mode");
+  return {
+    textContent: "",
+    dataset: {},
+    className: "",
+    getAttribute(name) {
+      return attributes.get(name) ?? null;
+    },
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    closest(selector) {
+      return selector.includes("button") ? this : null;
+    },
+  };
+}
+
+function enablePencilMode(environment, pencilButton = createPencilModeButton()) {
+  environment.setPencilButton(pencilButton);
+  environment.documentListeners.click({
+    target: pencilButton,
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  // Match The Age's toggled control when it exposes aria-pressed.
+  pencilButton.setAttribute("aria-pressed", "true");
+  return pencilButton;
+}
+
+function disablePencilMode(environment, pencilButton) {
+  pencilButton.setAttribute("aria-pressed", "false");
+  environment.documentListeners.click({
+    target: pencilButton,
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  pencilButton.setAttribute("aria-pressed", "false");
+}
+
 function clickKeypadDigit(environment, digit) {
   const keypad = {
     textContent: String(digit),
     dataset: {},
+    getAttribute(name) {
+      return name === "aria-label" ? String(digit) : null;
+    },
     closest(selector) {
       return selector.includes("button") ? this : null;
     },
@@ -571,31 +641,51 @@ function clickKeypadDigit(environment, digit) {
 }
 
 test("content script toggles a candidate from pencil-mode keypad input", async () => {
-  const environment = createContentEnvironment({ runTimersImmediately: false });
+  const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  environment.runPendingTimers();
   const cell = environment.cells[0][1];
   clickPuzzleCell(environment, cell);
-  environment.runPendingTimers();
+  enablePencilMode(environment);
 
   clickKeypadDigit(environment, 2);
-  environment.runPendingTimers();
 
   assert.equal(cell.spans[1].textContent, "\u00a0");
   assert.equal(cell.spans[2].textContent, "3");
 
   clickKeypadDigit(environment, 2);
-  environment.runPendingTimers();
   assert.equal(cell.spans[1].textContent, "2");
 });
 
-test("content script toggles a candidate from pencil-mode keyboard input", async () => {
-  const environment = createContentEnvironment({ runTimersImmediately: false });
+test("content script toggles candidates with digit-first pencil clicks", async () => {
+  const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  environment.runPendingTimers();
+  const first = environment.cells[0][1];
+  const second = environment.cells[0][2];
+  enablePencilMode(environment);
+
+  // Age UX: arm digit 2, then click target cells.
+  clickKeypadDigit(environment, 2);
+  assert.equal(first.spans[1].textContent, "2");
+
+  clickPuzzleCell(environment, first);
+  assert.equal(first.spans[1].textContent, "\u00a0");
+  assert.equal(second.spans[1].textContent, "2");
+
+  clickPuzzleCell(environment, second);
+  assert.equal(second.spans[1].textContent, "\u00a0");
+
+  clickKeypadDigit(environment, 8);
+  clickPuzzleCell(environment, first);
+  assert.equal(first.spans[7].textContent, "\u00a0");
+  assert.equal(first.spans[1].textContent, "\u00a0");
+});
+
+test("content script toggles a candidate from pencil-mode keyboard input", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
   const cell = environment.cells[0][1];
   clickPuzzleCell(environment, cell);
-  environment.runPendingTimers();
+  enablePencilMode(environment);
   cell.select();
   environment.documentRoot.activeElement = cell.button;
 
@@ -605,20 +695,19 @@ test("content script toggles a candidate from pencil-mode keyboard input", async
     stopImmediatePropagation() {},
     stopPropagation() {},
   });
-  environment.runPendingTimers();
 
   assert.equal(cell.spans[2].textContent, "\u00a0");
   assert.equal(cell.spans[1].textContent, "2");
 });
 
 test("content script prefers live aria-selected over a remembered cell", async () => {
-  const environment = createContentEnvironment({ runTimersImmediately: false });
+  const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  environment.runPendingTimers();
   const remembered = environment.cells[0][1];
   const live = environment.cells[0][2];
   clickPuzzleCell(environment, remembered);
-  environment.runPendingTimers();
+  enablePencilMode(environment);
+  remembered.button["aria-selected"] = "false";
   live.select();
 
   environment.documentListeners.keydown({
@@ -627,25 +716,21 @@ test("content script prefers live aria-selected over a remembered cell", async (
     stopImmediatePropagation() {},
     stopPropagation() {},
   });
-  environment.runPendingTimers();
 
   assert.equal(remembered.spans[3].textContent, "4");
   assert.equal(live.spans[3].textContent, "\u00a0");
 });
 
 test("content script undoes a pencil restore by re-hiding the candidate", async () => {
-  const environment = createContentEnvironment({ runTimersImmediately: false });
+  const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  environment.runPendingTimers();
   const cell = environment.cells[0][1];
   clickPuzzleCell(environment, cell);
-  environment.runPendingTimers();
+  enablePencilMode(environment);
 
   clickKeypadDigit(environment, 2);
-  environment.runPendingTimers();
   assert.equal(cell.spans[1].textContent, "\u00a0");
   clickKeypadDigit(environment, 2);
-  environment.runPendingTimers();
   assert.equal(cell.spans[1].textContent, "2");
 
   const undoButton = {
@@ -665,30 +750,82 @@ test("content script undoes a pencil restore by re-hiding the candidate", async 
     stopImmediatePropagation() {},
     stopPropagation() {},
   });
-  environment.runPendingTimers();
   assert.equal(cell.spans[1].textContent, "\u00a0");
 });
 
-test("content script leaves candidates alone when a digit places a full number", async () => {
-  const environment = createContentEnvironment({ runTimersImmediately: false });
+test("content script ignores keypad digits while The Age pencil mode is off", async () => {
+  const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  environment.runPendingTimers();
   const cell = environment.cells[0][1];
-  cell.select();
-
   clickPuzzleCell(environment, cell);
-  environment.runPendingTimers();
+
   clickKeypadDigit(environment, 2);
-
-  cell.setValue(2);
-  environment.runPendingTimers();
-
-  cell.button.childNodes = [];
-  cell.button.textContent = "";
-  await sendMessage(environment.messageListeners[0], { type: "fill" });
 
   assert.equal(cell.spans[1].textContent, "2");
   assert.equal(cell.spans[2].textContent, "3");
+});
+
+test("content script ignores keyboard digits while The Age pencil mode is off", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  clickPuzzleCell(environment, cell);
+  cell.select();
+
+  environment.documentListeners.keydown({
+    key: "2",
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+
+  assert.equal(cell.spans[1].textContent, "2");
+});
+
+test("content script toggles candidates from tracked Pencil mode without aria-pressed", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  clickPuzzleCell(environment, cell);
+  const pencilButton = createPencilModeButton();
+  environment.setPencilButton(pencilButton);
+  environment.documentListeners.click({
+    target: pencilButton,
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+
+  clickKeypadDigit(environment, 2);
+  assert.equal(cell.spans[1].textContent, "\u00a0");
+
+  environment.documentListeners.click({
+    target: pencilButton,
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  clickKeypadDigit(environment, 3);
+  assert.equal(cell.spans[2].textContent, "3");
+});
+
+test("content script leaves candidates alone when a digit places a full number", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const cell = environment.cells[0][1];
+  const peer = environment.cells[0][2];
+  clickPuzzleCell(environment, cell);
+  const pencilButton = enablePencilMode(environment);
+  clickKeypadDigit(environment, 3);
+  assert.equal(cell.spans[2].textContent, "\u00a0");
+  assert.equal(peer.spans[2].textContent, "3");
+
+  disablePencilMode(environment, pencilButton);
+  cell.setValue(2);
+  getTableObserver(environment).callback([{ target: cell.button }]);
+
+  assert.equal(peer.spans[1].textContent, "\u00a0");
+  assert.equal(peer.spans[2].textContent, "3");
 });
 
 test("content script eliminates an owned candidate from geometric Option/Alt-click", async () => {

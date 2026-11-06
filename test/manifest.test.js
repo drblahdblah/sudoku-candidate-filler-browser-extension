@@ -8,6 +8,7 @@ const projectRoot = path.join(__dirname, "..");
 const sharedCandidateScripts = [
   "src/candidates.js",
   "src/grid-dom.js",
+  "src/age-ui.js",
   "src/content.js",
 ];
 

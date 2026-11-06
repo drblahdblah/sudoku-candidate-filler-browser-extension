@@ -32,18 +32,22 @@ candidate marks update automatically. Clicking the extension's toolbar icon
 also refreshes candidates without opening a popup, so it does not pause the
 game.
 
-### Manual candidate eliminations
+### Solving workflows (NYT-style)
 
-Work through a puzzle in The Age's pencil/notes mode, then switch back to
-normal mode to enter full digits:
+The extension follows The Age **Pencil mode** button:
 
-1. Select an empty cell.
-2. In pencil mode, press a digit on the keypad or keyboard (`1`–`9`) to hide or
-   restore that candidate. The extension waits to see whether the page placed a
-   full digit; if the cell stays empty, the press is treated as a pencil toggle.
-3. Option/Alt-click an extension mini-digit still hides that candidate directly.
-4. Plain clicks pass through to The Age controls so selecting cells and entering
-   full numbers in normal mode keep working.
+1. **Gentle / easy (singletons):** leave Pencil mode off. Auto-filled candidates
+   update as you place full digits for cells with only one possibility.
+2. **Intermediate / expert (pencil editing):** turn Pencil mode on, select a
+   digit on the keypad (or keyboard `1`–`9`), then click cells to hide or
+   restore that candidate—same digit-first flow as The Age UI. You can also
+   select a cell first and then press a digit. Turn Pencil mode off and fill
+   full digits when singletons remain.
+3. **Hybrid:** switch Pencil mode on and off as needed—edit candidates when
+   stuck, place full digits when a singleton is clear.
+
+Option/Alt-click on an extension mini-digit remains a secondary way to hide a
+candidate. Plain clicks still reach The Age cell controls.
 
 The page Undo control (or Ctrl/Cmd+Z) reverses the most recent extension
 elimination while that remains the latest action. After you change a real
