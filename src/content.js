@@ -12,6 +12,7 @@
     manualExclusions: new Map(),
     exclusionUndoStack: [],
     trackedPencilMode: false,
+    armedDigit: null,
     lastSelectedCellKey: null,
     lastAction: null,
     gridFingerprint: null,
@@ -29,6 +30,7 @@
     state.manualExclusions = new Map();
     state.exclusionUndoStack = [];
     state.trackedPencilMode = false;
+    state.armedDigit = null;
     state.lastSelectedCellKey = null;
     state.lastAction = null;
     state.gridFingerprint = null;
@@ -61,8 +63,14 @@
 
     // Capture-phase click: flip tracked state, then sync if aria-pressed exists.
     state.trackedPencilMode = !state.trackedPencilMode;
+    if (!state.trackedPencilMode) {
+      state.armedDigit = null;
+    }
     window.setTimeout(() => {
       syncTrackedPencilModeFromDom();
+      if (!isPencilModeActive()) {
+        state.armedDigit = null;
+      }
     }, 0);
     return true;
   }
@@ -84,7 +92,7 @@
     return null;
   }
 
-  function resolveSelectedCell(cells) {
+  function resolveSelectedCell(cells, { allowRemembered = true } = {}) {
     for (const row of cells) {
       for (const cell of row) {
         const button = cell.querySelector("button[data-x][data-y]");
@@ -108,8 +116,12 @@
       }
     }
 
-    // Keypad clicks usually move focus off the grid; fall back to the last cell
-    // the player explicitly selected with a grid click.
+    if (!allowRemembered) {
+      return null;
+    }
+
+    // Keyboard digit entry usually happens after focus left the grid; fall back
+    // to the last cell the player explicitly selected with a grid click.
     return state.lastSelectedCellKey
       ? findCellByKey(cells, state.lastSelectedCellKey)
       : null;
@@ -329,20 +341,46 @@
     }
 
     const control = event.target?.closest?.("button, [role='button']");
-    if (!control || control.dataset?.x != null || control.dataset?.y != null) {
-      return null;
+    return globalThis.SudokuAgeUi.readDigitFromControl(control);
+  }
+
+  function resolveArmedDigit() {
+    return globalThis.SudokuAgeUi.findArmedDigit(document, state.armedDigit);
+  }
+
+  function toggleCandidateForCell(cell, digit) {
+    const key = getCellKey(cell);
+    if (!key || globalThis.SudokuGridDom.readCellValue(cell) !== 0) {
+      return false;
     }
 
-    for (const value of [
-      (control.textContent ?? "").trim(),
-      control.getAttribute?.("aria-label")?.trim(),
-      control.getAttribute?.("title")?.trim(),
-    ]) {
-      if (/^[1-9]$/.test(value)) {
-        return Number(value);
+    const cells = globalThis.SudokuGridDom.getPuzzleCells(state.puzzleTable);
+    if (!cells) {
+      return false;
+    }
+
+    let grid;
+    try {
+      grid = globalThis.SudokuGridDom.readGrid(cells);
+    } catch (_error) {
+      return false;
+    }
+
+    const standardCandidates = globalThis.SudokuCandidates.calculateCandidates(grid);
+    let available = null;
+    for (let row = 0; row < cells.length; row += 1) {
+      for (let column = 0; column < cells[row].length; column += 1) {
+        if (getCellKey(cells[row][column]) === key) {
+          available = standardCandidates[row][column];
+        }
       }
     }
-    return null;
+
+    if (!toggleManualCandidate(key, digit, available)) {
+      return false;
+    }
+    refreshCandidates();
+    return true;
   }
 
   function isUndoButton(event) {
@@ -487,12 +525,46 @@
   }
 
   function handlePencilDigitInput(event) {
-    if (!state.enabled || !isPencilModeActive()) {
+    const digit = readEnteredDigit(event);
+    if (!state.enabled || !isPencilModeActive() || !digit || !state.puzzleTable) {
       return false;
     }
 
-    const digit = readEnteredDigit(event);
-    if (!digit || !state.puzzleTable) {
+    state.armedDigit = digit;
+
+    const cells = globalThis.SudokuGridDom.getPuzzleCells(state.puzzleTable);
+    if (!cells) {
+      return false;
+    }
+
+    // Keypad clicks follow Age digit-first UX: arm and wait for cell clicks.
+    // Keyboard digits still toggle the live/remembered selected cell.
+    const fromKeyboard = typeof event.key === "string";
+    const selected = resolveSelectedCell(cells, {
+      allowRemembered: fromKeyboard,
+    });
+    if (!selected) {
+      return true;
+    }
+    if (!toggleCandidateForCell(selected, digit)) {
+      return false;
+    }
+    stopEvent(event);
+    return true;
+  }
+
+  function handlePencilCellClick(event) {
+    if (!state.enabled || !isPencilModeActive() || !state.puzzleTable) {
+      return false;
+    }
+
+    const button = event.target?.closest?.("button[data-x][data-y]");
+    if (!button) {
+      return false;
+    }
+
+    const digit = resolveArmedDigit();
+    if (!digit) {
       return false;
     }
 
@@ -501,34 +573,18 @@
       return false;
     }
 
-    const selected = resolveSelectedCell(cells);
-    const key = selected && getCellKey(selected);
-    if (!key || globalThis.SudokuGridDom.readCellValue(selected) !== 0) {
-      return false;
-    }
-
-    let grid;
-    try {
-      grid = globalThis.SudokuGridDom.readGrid(cells);
-    } catch (_error) {
-      return false;
-    }
-
-    const standardCandidates = globalThis.SudokuCandidates.calculateCandidates(grid);
-    let available = null;
-    for (let row = 0; row < cells.length; row += 1) {
-      for (let column = 0; column < cells[row].length; column += 1) {
-        if (getCellKey(cells[row][column]) === key) {
-          available = standardCandidates[row][column];
+    for (const row of cells) {
+      for (const cell of row) {
+        if (cell.querySelector("button[data-x][data-y]") === button) {
+          if (!toggleCandidateForCell(cell, digit)) {
+            return false;
+          }
+          stopEvent(event);
+          return true;
         }
       }
     }
-
-    if (!toggleManualCandidate(key, digit, available)) {
-      return false;
-    }
-    refreshCandidates();
-    return true;
+    return false;
   }
 
   function handleCandidateElimination(event) {
@@ -570,6 +626,10 @@
       return;
     }
 
+    // Prefer digit-first: armed digit + puzzle cell click.
+    if (handlePencilCellClick(event)) {
+      return;
+    }
     if (handlePencilDigitInput(event)) {
       return;
     }

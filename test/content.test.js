@@ -551,6 +551,15 @@ test("content script does not intercept unowned candidate marks", async () => {
 });
 
 function clickPuzzleCell(environment, cell) {
+  // Match The Age marking the focused cell as selected for cell-then-digit.
+  for (const row of environment.cells) {
+    for (const other of row) {
+      if (other?.button) {
+        other.button["aria-selected"] = "false";
+      }
+    }
+  }
+  cell.select();
   environment.documentListeners.click({
     target: {
       closest(selector) {
@@ -647,6 +656,30 @@ test("content script toggles a candidate from pencil-mode keypad input", async (
   assert.equal(cell.spans[1].textContent, "2");
 });
 
+test("content script toggles candidates with digit-first pencil clicks", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const first = environment.cells[0][1];
+  const second = environment.cells[0][2];
+  enablePencilMode(environment);
+
+  // Age UX: arm digit 2, then click target cells.
+  clickKeypadDigit(environment, 2);
+  assert.equal(first.spans[1].textContent, "2");
+
+  clickPuzzleCell(environment, first);
+  assert.equal(first.spans[1].textContent, "\u00a0");
+  assert.equal(second.spans[1].textContent, "2");
+
+  clickPuzzleCell(environment, second);
+  assert.equal(second.spans[1].textContent, "\u00a0");
+
+  clickKeypadDigit(environment, 8);
+  clickPuzzleCell(environment, first);
+  assert.equal(first.spans[7].textContent, "\u00a0");
+  assert.equal(first.spans[1].textContent, "\u00a0");
+});
+
 test("content script toggles a candidate from pencil-mode keyboard input", async () => {
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
@@ -674,6 +707,7 @@ test("content script prefers live aria-selected over a remembered cell", async (
   const live = environment.cells[0][2];
   clickPuzzleCell(environment, remembered);
   enablePencilMode(environment);
+  remembered.button["aria-selected"] = "false";
   live.select();
 
   environment.documentListeners.keydown({

@@ -2,9 +2,11 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  findArmedDigit,
   findPencilModeControl,
   isAgePencilModeActive,
   isPencilModeControl,
+  readDigitFromControl,
 } = require("../src/age-ui.js");
 
 function createButton({
@@ -25,9 +27,11 @@ function createButton({
   if (ariaPressed != null) {
     attributes.set("aria-pressed", ariaPressed);
   }
+  const classList = className.split(/\s+/).filter(Boolean);
   return {
     textContent,
     className,
+    classList,
     dataset,
     getAttribute(name) {
       return attributes.get(name) ?? null;
@@ -38,7 +42,19 @@ function createButton({
 function createDocument(buttons) {
   return {
     querySelectorAll(selector) {
-      return selector === "button, [role='button']" ? buttons : [];
+      if (selector === "button[data-n]") {
+        return buttons.filter((button) => button.dataset?.n != null);
+      }
+      if (selector === "button, [role='button']") {
+        return buttons;
+      }
+      return [];
+    },
+    querySelector(selector) {
+      if (selector === 'button[data-n="0"]') {
+        return buttons.find((button) => button.dataset?.n === "0") ?? null;
+      }
+      return null;
     },
   };
 }
@@ -75,4 +91,62 @@ test("does not treat generic active classes as pencil mode on", () => {
     className: "active selected pressed",
   });
   assert.equal(isAgePencilModeActive(createDocument([pencil]), false), false);
+});
+
+test("detects Age pencil mode from the keypad selection CSS class", () => {
+  const selectedClass = "I3KTk";
+  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) =>
+    createButton({
+      textContent: String(digit),
+      dataset: { n: String(digit) },
+      className: digit === 2 ? selectedClass : "",
+    }),
+  );
+  const deleteKey = createButton({ textContent: "Delete", dataset: { n: "0" } });
+  const pencilOn = createButton({
+    textContent: "Pencil mode",
+    className: selectedClass,
+  });
+  const pencilOff = createButton({ textContent: "Pencil mode" });
+
+  assert.equal(
+    isAgePencilModeActive(createDocument([...digits, deleteKey, pencilOn]), false),
+    true,
+  );
+  assert.equal(
+    isAgePencilModeActive(createDocument([...digits, deleteKey, pencilOff]), true),
+    false,
+  );
+});
+
+test("finds an armed keypad digit from aria-pressed or tracked state", () => {
+  const two = createButton({ textContent: "2", ariaPressed: "true" });
+  const three = createButton({ textContent: "3" });
+  assert.equal(findArmedDigit(createDocument([three, two])), 2);
+  assert.equal(findArmedDigit(createDocument([three]), 8), 8);
+  assert.equal(findArmedDigit(createDocument([three])), null);
+});
+
+test("finds an armed Age keypad digit from data-n and selection class", () => {
+  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) =>
+    createButton({
+      textContent: String(digit),
+      dataset: { n: String(digit) },
+      className: digit === 8 ? "I3KTk" : "",
+    }),
+  );
+  assert.equal(findArmedDigit(createDocument(digits)), 8);
+  assert.equal(readDigitFromControl(digits[1]), 2);
+});
+
+test("reads keypad digits from repeated Age accessible labels", () => {
+  assert.equal(readDigitFromControl(createButton({ textContent: "2 2" })), 2);
+  assert.equal(
+    readDigitFromControl(createButton({ ariaLabel: "8 8" })),
+    8,
+  );
+  assert.equal(
+    readDigitFromControl(createButton({ textContent: "2", dataset: { x: "1" } })),
+    null,
+  );
 });

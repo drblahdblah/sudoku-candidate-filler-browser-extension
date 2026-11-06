@@ -39,9 +39,10 @@ The extension follows The Age **Pencil mode** button:
 1. **Gentle / easy (singletons):** leave Pencil mode off. Auto-filled candidates
    update as you place full digits for cells with only one possibility.
 2. **Intermediate / expert (pencil editing):** turn Pencil mode on, select a
-   cell, then press keypad/keyboard digits (`1`–`9`) to hide or restore
-   candidates until only singletons remain. Turn Pencil mode off and fill those
-   full digits.
+   digit on the keypad (or keyboard `1`–`9`), then click cells to hide or
+   restore that candidate—same digit-first flow as The Age UI. You can also
+   select a cell first and then press a digit. Turn Pencil mode off and fill
+   full digits when singletons remain.
 3. **Hybrid:** switch Pencil mode on and off as needed—edit candidates when
    stuck, place full digits when a singleton is clear.
 
