@@ -9,22 +9,23 @@ cell's row, column, or 3×3 box. It recalculates after the puzzle changes.
 ## Install locally
 
 1. Clone this repository or open this folder locally.
-2. Run `npm run build`.
-3. For Chrome, Edge, Brave, Opera, or Vivaldi:
+2. For Chrome, Edge, Brave, Opera, or Vivaldi:
    - Open the browser's extensions page (for Chrome:
      `chrome://extensions`).
    - Enable developer mode and select **Load unpacked**.
-   - Choose `dist/chromium`.
-4. For Firefox:
+   - Choose this repository's root folder. It contains a Chromium-compatible
+     `manifest.json` for direct local loading.
+3. For Firefox:
+   - Run `npm run build`.
    - Open `about:debugging#/runtime/this-firefox`.
    - Select **Load Temporary Add-on** and choose
      `dist/firefox/manifest.json`.
-5. For Safari on macOS, follow the [Safari Web Extension wrapper
+4. For Safari on macOS, follow the [Safari Web Extension wrapper
    guide](docs/store/safari-webextension.md). It requires Xcode to create and
    run the host app.
-6. Open an authenticated puzzle at
+5. Open an authenticated puzzle at
    `https://www.theage.com.au/puzzles/sudoku/...`.
-7. The extension fills candidates automatically once the grid has loaded.
+6. The extension fills candidates automatically once the grid has loaded.
 
 When you change a number, start a new puzzle, or return focus to the puzzle,
 candidate marks update automatically. Clicking the extension's toolbar icon
