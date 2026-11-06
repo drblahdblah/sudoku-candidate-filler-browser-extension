@@ -60,6 +60,7 @@ function createCandidateSpan() {
     tagName: "SPAN",
     textContent: "",
     style: {},
+    dataset: {},
     tabIndex: -1,
     setAttribute(name, value) {
       attributes.set(name, value);
@@ -281,7 +282,7 @@ test("creates a native-style candidate container for an empty button without one
   );
 });
 
-test("enables pointer and keyboard interaction only on visible owned candidate marks", () => {
+test("marks owned candidates without capturing pointer events from the cell", () => {
   const cells = Array.from({ length: 9 }, () =>
     Array.from({ length: 9 }, () => createCandidateCell()),
   );
@@ -295,15 +296,16 @@ test("enables pointer and keyboard interaction only on visible owned candidate m
   assert.equal(container.style.pointerEvents, "none");
   for (const [index, span] of container.children.entries()) {
     const isActive = [1, 3, 9].includes(index + 1);
-    assert.equal(span.style.pointerEvents, isActive ? "auto" : "none");
-    assert.equal(span.style.cursor, isActive ? "pointer" : "");
-    assert.equal(span.style.position, isActive ? "relative" : "");
-    assert.equal(span.style.zIndex, isActive ? "1" : "");
-    assert.equal(span.tabIndex, isActive ? 0 : -1);
-    assert.equal(span.getAttribute("role"), isActive ? "button" : null);
+    assert.equal(span.style.pointerEvents, "none");
+    assert.equal(span.style.cursor, "");
+    assert.equal(span.style.position, "");
+    assert.equal(span.style.zIndex, "");
+    assert.equal(span.tabIndex, -1);
+    assert.equal(span.getAttribute("role"), null);
+    assert.equal(span.getAttribute("aria-label"), null);
     assert.equal(
-      span.getAttribute("aria-label"),
-      isActive ? `Eliminate candidate ${index + 1}` : null,
+      span.dataset.scfCandidate,
+      isActive ? String(index + 1) : undefined,
     );
   }
 });

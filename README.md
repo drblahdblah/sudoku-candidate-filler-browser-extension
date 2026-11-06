@@ -34,19 +34,22 @@ game.
 
 ### Manual candidate eliminations
 
-Click an extension-rendered mini-digit to hide that candidate for its cell.
-You can also focus a visible mini-digit and press Enter or Space. Eliminations
-are intentionally one-way: once removed, the empty mini-digit slot is no
-longer interactive so pointer input reaches the puzzle's native cell button.
-The extension keeps exclusions by the cell's puzzle coordinates, so they
-survive automatic refreshes and site re-renders while the current puzzle
-remains open. They reset when the puzzle or URL changes.
+Work through a puzzle in The Age's pencil/notes mode, then switch back to
+normal mode to enter full digits:
 
-The Age's keypad is intentionally not used for manual eliminations. Its
-currently supported grid markup does not expose a stable, candidate-mode-only
-keypad control that can be distinguished from entering a solved number.
-Guessing keypad selectors could change puzzle values, so direct clicks on the
-extension-owned `data-scf-candidates` marks are the supported safe interaction.
+1. Select an empty cell.
+2. In pencil mode, press a digit on the keypad or keyboard (`1`–`9`) to hide or
+   restore that candidate. The extension waits to see whether the page placed a
+   full digit; if the cell stays empty, the press is treated as a pencil toggle.
+3. Option/Alt-click an extension mini-digit still hides that candidate directly.
+4. Plain clicks pass through to The Age controls so selecting cells and entering
+   full numbers in normal mode keep working.
+
+The page Undo control (or Ctrl/Cmd+Z) reverses the most recent extension
+elimination while that remains the latest action. After you change a real
+puzzle digit, older extension Undo entries are cleared and Undo belongs to the
+page again. Exclusions stay tied to cell coordinates across refreshes for the
+current puzzle, and reset when the puzzle or URL changes.
 
 ## Development and packages
 
