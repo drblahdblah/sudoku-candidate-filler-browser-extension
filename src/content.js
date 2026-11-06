@@ -8,7 +8,11 @@
     renderedSpans: null,
     renderedCandidateMarks: new Map(),
     renderedCandidateSpans: new WeakMap(),
+    candidateHitTargets: [],
     manualExclusions: new Map(),
+    exclusionUndoStack: [],
+    lastAction: null,
+    gridFingerprint: null,
     puzzleLocation: null,
     scheduled: false,
     lastStatus: "Waiting for a Sudoku grid.",
@@ -19,7 +23,11 @@
   function resetCandidateState() {
     state.renderedCandidateMarks = new Map();
     state.renderedCandidateSpans = new WeakMap();
+    state.candidateHitTargets = [];
     state.manualExclusions = new Map();
+    state.exclusionUndoStack = [];
+    state.lastAction = null;
+    state.gridFingerprint = null;
   }
 
   function getCellKey(cell) {
@@ -48,6 +56,7 @@
   function rememberRenderedCandidates(cells, candidates) {
     const marks = new Map();
     const spansByCandidate = new WeakMap();
+    const hitTargets = [];
     for (let row = 0; row < cells.length; row += 1) {
       for (let column = 0; column < cells[row].length; column += 1) {
         const key = getCellKey(cells[row][column]);
@@ -60,7 +69,9 @@
           spans?.forEach((span, index) => {
             const candidate = index + 1;
             if (cellCandidates.includes(candidate)) {
-              spansByCandidate.set(span, { key, candidate });
+              const target = { key, candidate, span };
+              spansByCandidate.set(span, target);
+              hitTargets.push(target);
             }
           });
         }
@@ -68,6 +79,7 @@
     }
     state.renderedCandidateMarks = marks;
     state.renderedCandidateSpans = spansByCandidate;
+    state.candidateHitTargets = hitTargets;
   }
 
   function excludeManualCandidate(key, candidate) {
@@ -82,7 +94,99 @@
     updatedExclusions.add(candidate);
     exclusions.set(key, updatedExclusions);
     state.manualExclusions = exclusions;
+    state.exclusionUndoStack = [...state.exclusionUndoStack, { key, candidate }];
+    state.lastAction = "exclude";
     return true;
+  }
+
+  function undoLastExclusion() {
+    if (state.lastAction !== "exclude" || state.exclusionUndoStack.length === 0) {
+      return false;
+    }
+
+    const last = state.exclusionUndoStack[state.exclusionUndoStack.length - 1];
+    const exclusions = new Map(state.manualExclusions);
+    const updatedExclusions = new Set(exclusions.get(last.key));
+    updatedExclusions.delete(last.candidate);
+    if (updatedExclusions.size === 0) {
+      exclusions.delete(last.key);
+    } else {
+      exclusions.set(last.key, updatedExclusions);
+    }
+    state.manualExclusions = exclusions;
+    state.exclusionUndoStack = state.exclusionUndoStack.slice(0, -1);
+    state.lastAction = state.exclusionUndoStack.length > 0 ? "exclude" : null;
+    return true;
+  }
+
+  function pointHitsSpan(span, clientX, clientY) {
+    if (
+      typeof clientX !== "number" ||
+      typeof clientY !== "number" ||
+      typeof span.getBoundingClientRect !== "function"
+    ) {
+      return false;
+    }
+
+    const rect = span.getBoundingClientRect();
+    return (
+      clientX >= rect.left &&
+      clientX < rect.right &&
+      clientY >= rect.top &&
+      clientY < rect.bottom
+    );
+  }
+
+  function findCandidateFromEvent(event) {
+    const direct = state.renderedCandidateSpans.get(event.target);
+    if (direct) {
+      return direct;
+    }
+
+    const host = event.target?.closest?.("[data-scf-candidate]");
+    if (host) {
+      const mapped = state.renderedCandidateSpans.get(host);
+      if (mapped) {
+        return mapped;
+      }
+      const candidate = Number(host.dataset?.scfCandidate);
+      if (candidate >= 1 && candidate <= 9) {
+        const key = getCellKey(host.closest?.("td") ?? host.parentElement?.parentElement);
+        if (key) {
+          return { key, candidate, span: host };
+        }
+      }
+    }
+
+    return state.candidateHitTargets.find((target) =>
+      pointHitsSpan(target.span, event.clientX, event.clientY),
+    ) ?? null;
+  }
+
+  function isUndoButton(event) {
+    const control = event.target?.closest?.("button, [role='button']");
+    if (!control) {
+      return false;
+    }
+    const label = `${control.textContent ?? ""} ${
+      control.getAttribute?.("aria-label") ?? ""
+    } ${control.getAttribute?.("title") ?? ""}`;
+    return /\bundo\b/i.test(label);
+  }
+
+  function isUndoKey(event) {
+    return (
+      (event.key === "z" || event.key === "Z") &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey
+    );
+  }
+
+  function stopEvent(event) {
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    event.stopPropagation?.();
   }
 
   function observeForPuzzle() {
@@ -137,6 +241,14 @@
 
     try {
       const grid = globalThis.SudokuGridDom.readGrid(cells);
+      const fingerprint = grid.map((row) => row.join("")).join("|");
+      if (state.gridFingerprint !== null && fingerprint !== state.gridFingerprint) {
+        // A real digit change means the page owns Undo; drop stale exclusions.
+        state.lastAction = "grid";
+        state.exclusionUndoStack = [];
+      }
+      state.gridFingerprint = fingerprint;
+
       const candidates = applyManualExclusions(
         cells,
         globalThis.SudokuCandidates.calculateCandidates(grid),
@@ -191,25 +303,40 @@
     }
   }
 
-  function handleCandidateActivation(event) {
-    const renderedCandidate = state.renderedCandidateSpans.get(event.target);
+  function handleCandidateElimination(event) {
+    if (!event.altKey) {
+      return false;
+    }
+
+    const renderedCandidate = findCandidateFromEvent(event);
     if (
       renderedCandidate &&
       excludeManualCandidate(renderedCandidate.key, renderedCandidate.candidate)
     ) {
-      event.preventDefault?.();
-      event.stopImmediatePropagation?.();
-      event.stopPropagation?.();
+      stopEvent(event);
       refreshCandidates();
       return true;
     }
     return false;
   }
 
+  function handleExtensionUndo(event) {
+    if (!undoLastExclusion()) {
+      return false;
+    }
+    stopEvent(event);
+    refreshCandidates();
+    return true;
+  }
+
   function handlePageClick(event) {
-    if (handleCandidateActivation(event)) {
+    if (handleCandidateElimination(event)) {
       return;
     }
+    if (isUndoButton(event) && handleExtensionUndo(event)) {
+      return;
+    }
+
     scheduleRefresh();
 
     const button = event.target.closest?.("button");
@@ -219,12 +346,8 @@
   }
 
   function handlePageKeydown(event) {
-    if (
-      event.key === "Enter" ||
-      event.key === " " ||
-      event.key === "Spacebar"
-    ) {
-      handleCandidateActivation(event);
+    if (isUndoKey(event)) {
+      handleExtensionUndo(event);
     }
   }
 

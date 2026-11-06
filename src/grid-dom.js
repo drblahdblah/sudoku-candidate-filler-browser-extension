@@ -155,31 +155,28 @@
     return spans;
   }
 
-  function setOwnedCandidateInteraction(container, spans, candidates) {
-    if (container.style) {
-      container.style.pointerEvents = "none";
-    }
+  function setOwnedCandidateMetadata(spans, candidates) {
     for (let index = 0; index < spans.length; index += 1) {
       const span = spans[index];
       const candidate = index + 1;
       const isActive = candidates.includes(candidate);
+      if (span.dataset) {
+        if (isActive) {
+          span.dataset.scfCandidate = String(candidate);
+        } else {
+          delete span.dataset.scfCandidate;
+        }
+      }
+      // Keep marks paint-only so the native cell button receives normal clicks.
       if (span.style) {
-        span.style.cursor = isActive ? "pointer" : "";
-        span.style.pointerEvents = isActive ? "auto" : "none";
-        // The site cell button can otherwise sit above these sibling marks.
-        // Relative positioning preserves the candidate grid's layout.
-        span.style.position = isActive ? "relative" : "";
-        span.style.zIndex = isActive ? "1" : "";
+        span.style.cursor = "";
+        span.style.pointerEvents = "none";
+        span.style.position = "";
+        span.style.zIndex = "";
       }
-      if (isActive) {
-        span.tabIndex = 0;
-        span.setAttribute?.("role", "button");
-        span.setAttribute?.("aria-label", `Eliminate candidate ${candidate}`);
-      } else {
-        span.tabIndex = -1;
-        span.removeAttribute?.("role");
-        span.removeAttribute?.("aria-label");
-      }
+      span.tabIndex = -1;
+      span.removeAttribute?.("role");
+      span.removeAttribute?.("aria-label");
     }
   }
 
@@ -211,6 +208,9 @@
         if (!container) {
           continue;
         }
+        if (container.style) {
+          container.style.pointerEvents = "none";
+        }
         for (let index = 0; index < spans.length; index += 1) {
           const nextMark = cellCandidates.includes(index + 1)
             ? String(index + 1)
@@ -220,7 +220,7 @@
             updatedSpans.push(spans[index]);
           }
         }
-        setOwnedCandidateInteraction(container, spans, cellCandidates);
+        setOwnedCandidateMetadata(spans, cellCandidates);
       }
     }
     return updatedSpans;
