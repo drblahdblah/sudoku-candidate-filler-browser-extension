@@ -1,0 +1,12 @@
+{
+  "name": "sudoku-candidate-filler-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that fills standard Sudoku candidates on supported puzzle pages.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
