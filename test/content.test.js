@@ -37,9 +37,16 @@ function createCandidateCell() {
     setCoordinates(x, y) {
       this.button = {
         childNodes: [],
+        className: "",
         dataset: { x: String(x), y: String(y) },
         textContent: "",
+        getAttribute(name) {
+          return this[name] ?? null;
+        },
       };
+    },
+    select() {
+      this.button["aria-selected"] = "true";
     },
     setValue(value) {
       this.button.childNodes = [{ nodeType: 3, textContent: String(value) }];
@@ -158,6 +165,7 @@ function createContentEnvironment({
   };
   const documentRoot = {
     documentElement: {},
+    activeElement: null,
     addEventListener(type, listener) {
       documentListeners[type] = listener;
     },
@@ -191,6 +199,12 @@ function createContentEnvironment({
           callback();
         }
         return timers.length;
+      },
+      clearTimeout(timerId) {
+        const index = timerId - 1;
+        if (index >= 0 && index < timers.length) {
+          timers[index] = { callback() {}, delay: timers[index].delay };
+        }
       },
       setInterval(callback, delay) {
         intervals.push({ callback, delay });
@@ -522,6 +536,137 @@ test("content script does not intercept unowned candidate marks", async () => {
   environment.documentListeners.keydown(keydown);
   assert.equal(keydown.prevented, false);
   assert.equal(keydown.stopped, false);
+});
+
+function clickPuzzleCell(environment, cell) {
+  environment.documentListeners.click({
+    target: {
+      closest(selector) {
+        return selector === "button[data-x][data-y]" ? cell.button : null;
+      },
+    },
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+}
+
+function clickKeypadDigit(environment, digit) {
+  const keypad = {
+    textContent: String(digit),
+    dataset: {},
+    closest(selector) {
+      return selector.includes("button") ? this : null;
+    },
+  };
+  environment.documentListeners.click({
+    target: keypad,
+    closest(selector) {
+      return keypad.closest(selector);
+    },
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+}
+
+test("content script toggles a candidate from pencil-mode keypad input", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  const cell = environment.cells[0][1];
+  clickPuzzleCell(environment, cell);
+  environment.runPendingTimers();
+
+  clickKeypadDigit(environment, 2);
+  environment.runPendingTimers();
+
+  assert.equal(cell.spans[1].textContent, "\u00a0");
+  assert.equal(cell.spans[2].textContent, "3");
+
+  clickKeypadDigit(environment, 2);
+  environment.runPendingTimers();
+  assert.equal(cell.spans[1].textContent, "2");
+});
+
+test("content script toggles a candidate from pencil-mode keyboard input", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  const cell = environment.cells[0][1];
+  clickPuzzleCell(environment, cell);
+  environment.runPendingTimers();
+  cell.select();
+  environment.documentRoot.activeElement = cell.button;
+
+  environment.documentListeners.keydown({
+    key: "3",
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  environment.runPendingTimers();
+
+  assert.equal(cell.spans[2].textContent, "\u00a0");
+  assert.equal(cell.spans[1].textContent, "2");
+});
+
+test("content script undoes a pencil restore by re-hiding the candidate", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  const cell = environment.cells[0][1];
+  clickPuzzleCell(environment, cell);
+  environment.runPendingTimers();
+
+  clickKeypadDigit(environment, 2);
+  environment.runPendingTimers();
+  assert.equal(cell.spans[1].textContent, "\u00a0");
+  clickKeypadDigit(environment, 2);
+  environment.runPendingTimers();
+  assert.equal(cell.spans[1].textContent, "2");
+
+  const undoButton = {
+    textContent: "Undo",
+    getAttribute() {
+      return null;
+    },
+  };
+  environment.documentListeners.click({
+    altKey: false,
+    target: {
+      closest(selector) {
+        return selector.includes("button") ? undoButton : null;
+      },
+    },
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  environment.runPendingTimers();
+  assert.equal(cell.spans[1].textContent, "\u00a0");
+});
+
+test("content script leaves candidates alone when a digit places a full number", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  const cell = environment.cells[0][1];
+  cell.select();
+
+  clickPuzzleCell(environment, cell);
+  environment.runPendingTimers();
+  clickKeypadDigit(environment, 2);
+
+  cell.setValue(2);
+  environment.runPendingTimers();
+
+  cell.button.childNodes = [];
+  cell.button.textContent = "";
+  await sendMessage(environment.messageListeners[0], { type: "fill" });
+
+  assert.equal(cell.spans[1].textContent, "2");
+  assert.equal(cell.spans[2].textContent, "3");
 });
 
 test("content script eliminates an owned candidate from geometric Option/Alt-click", async () => {
