@@ -94,14 +94,25 @@
       return 0;
     }
 
-    const valueText = button.childNodes
-      ? Array.from(button.childNodes)
-        .filter((node) => node.nodeType === 3)
-        .map((node) => node.textContent)
-        .join("")
-      : button.textContent;
-    const value = Number.parseInt(valueText.trim(), 10);
-    return value >= 1 && value <= GRID_SIZE ? value : 0;
+    const candidateContainer = getCandidateContainer(cell);
+    const valueText = textOutsideCandidateContainer(button, candidateContainer).trim();
+    return /^[1-9]$/.test(valueText) ? Number(valueText) : 0;
+  }
+
+  function textOutsideCandidateContainer(node, candidateContainer) {
+    if (node === candidateContainer) {
+      return "";
+    }
+    if (node.nodeType === 3) {
+      return node.textContent;
+    }
+    if (!node.childNodes) {
+      return node.textContent ?? "";
+    }
+
+    return Array.from(node.childNodes)
+      .map((child) => textOutsideCandidateContainer(child, candidateContainer))
+      .join("");
   }
 
   function readGrid(cells) {
@@ -155,6 +166,10 @@
       if (span.style) {
         span.style.cursor = isActive ? "pointer" : "";
         span.style.pointerEvents = isActive ? "auto" : "none";
+        // The site cell button can otherwise sit above these sibling marks.
+        // Relative positioning preserves the candidate grid's layout.
+        span.style.position = isActive ? "relative" : "";
+        span.style.zIndex = isActive ? "1" : "";
       }
       if (isActive) {
         span.tabIndex = 0;

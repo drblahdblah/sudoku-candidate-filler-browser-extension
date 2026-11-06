@@ -297,6 +297,8 @@ test("enables pointer and keyboard interaction only on visible owned candidate m
     const isActive = [1, 3, 9].includes(index + 1);
     assert.equal(span.style.pointerEvents, isActive ? "auto" : "none");
     assert.equal(span.style.cursor, isActive ? "pointer" : "");
+    assert.equal(span.style.position, isActive ? "relative" : "");
+    assert.equal(span.style.zIndex, isActive ? "1" : "");
     assert.equal(span.tabIndex, isActive ? 0 : -1);
     assert.equal(span.getAttribute("role"), isActive ? "button" : null);
     assert.equal(
@@ -307,24 +309,37 @@ test("enables pointer and keyboard interaction only on visible owned candidate m
 });
 
 test("does not read a single candidate inside a button as a solved cell value", () => {
+  const candidateContainer = {
+    children: Array.from({ length: 9 }, () => ({ tagName: "SPAN" })),
+    childNodes: [{ nodeType: 3, textContent: "5" }],
+  };
   const candidateOnlyCell = {
     querySelector(selector) {
       return selector === "button[data-x][data-y]"
         ? {
-          childNodes: [{ nodeType: 1, textContent: "5" }],
+          childNodes: [candidateContainer],
           textContent: "5",
         }
         : null;
+    },
+    querySelectorAll(selector) {
+      return selector === "div" ? [candidateContainer] : [];
     },
   };
   const fixedValueCell = {
     querySelector(selector) {
       return selector === "button[data-x][data-y]"
         ? {
-          childNodes: [{ nodeType: 3, textContent: "6" }],
+          childNodes: [{
+            childNodes: [{ nodeType: 3, textContent: "6" }],
+            nodeType: 1,
+          }],
           textContent: "6",
         }
         : null;
+    },
+    querySelectorAll() {
+      return [];
     },
   };
 
