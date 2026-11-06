@@ -99,6 +99,14 @@ test("generates isolated Chromium and Firefox manifests from shared source", (t)
   }
 });
 
+test("keeps a Chromium manifest at the repository root for Load unpacked", () => {
+  const rootManifest = JSON.parse(
+    fs.readFileSync(path.join(ROOT_DIR, "manifest.json"), "utf8"),
+  );
+
+  assert.deepEqual(rootManifest, buildManifest("chromium"));
+});
+
 test("generates a Safari source package with the existing narrow permissions", (t) => {
   const outputRoot = createTemporaryOutput(t);
   const safariDirectory = prepareSafariExtension(outputRoot);
