@@ -18,6 +18,15 @@ const {
   packageTarget,
   releaseFirefoxGeckoId,
 } = require("../scripts/package.js");
+const {
+  APPLE_BUNDLE_IDENTIFIER_PLACEHOLDER,
+  LEGACY_PACKAGER,
+  MODERN_PACKAGER,
+  loadSafariConfig,
+  packagerArguments,
+  prepareSafariExtension,
+  resolveBundleIdentifier,
+} = require("../scripts/generate-safari-wrapper.js");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 
@@ -88,6 +97,74 @@ test("generates isolated Chromium and Firefox manifests from shared source", (t)
     assert.ok(fs.existsSync(path.join(packageDirectory, "src/content.js")));
     assert.ok(fs.existsSync(path.join(packageDirectory, "assets/icons/icon-128.png")));
   }
+});
+
+test("generates a Safari source package with the existing narrow permissions", (t) => {
+  const outputRoot = createTemporaryOutput(t);
+  const safariDirectory = prepareSafariExtension(outputRoot);
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(safariDirectory, "manifest.json"), "utf8"),
+  );
+
+  assert.deepEqual(manifest.background, {
+    service_worker: "src/background.js",
+  });
+  assert.equal(manifest.browser_specific_settings, undefined);
+  assert.deepEqual(manifest.permissions, ["storage"]);
+  assert.deepEqual(manifest.host_permissions, [HOST_PERMISSION]);
+});
+
+test("uses the documented placeholder configuration for Safari wrapper generation", () => {
+  const config = loadSafariConfig();
+
+  assert.equal(config.bundleIdentifier, APPLE_BUNDLE_IDENTIFIER_PLACEHOLDER);
+  assert.equal(resolveBundleIdentifier(config), APPLE_BUNDLE_IDENTIFIER_PLACEHOLDER);
+  assert.equal(
+    resolveBundleIdentifier(config, "com.publisher.sudokucandidatefiller"),
+    "com.publisher.sudokucandidatefiller",
+  );
+  assert.throws(
+    () => resolveBundleIdentifier(config, "not a bundle identifier"),
+    /reverse-DNS-style bundle identifier/,
+  );
+  assert.deepEqual(
+    packagerArguments(MODERN_PACKAGER, "/tmp/safari", config, "/tmp/output"),
+    [
+      MODERN_PACKAGER,
+      "/tmp/safari",
+      "--project-location",
+      "/tmp/output/safari-host-app",
+      "--app-name",
+      "Sudoku Candidate Filler",
+      "--bundle-identifier",
+      APPLE_BUNDLE_IDENTIFIER_PLACEHOLDER,
+      "--swift",
+      "--macos-only",
+      "--copy-resources",
+      "--no-open",
+      "--no-prompt",
+      "--force",
+    ],
+  );
+  assert.deepEqual(
+    packagerArguments(LEGACY_PACKAGER, "/tmp/safari", config, "/tmp/output"),
+    [
+      LEGACY_PACKAGER,
+      "/tmp/safari",
+      "--project-location",
+      "/tmp/output/safari-host-app",
+      "--app-name",
+      "Sudoku Candidate Filler",
+      "--bundle-identifier",
+      APPLE_BUNDLE_IDENTIFIER_PLACEHOLDER,
+      "--swift",
+      "--macos-only",
+      "--copy-resources",
+      "--no-open",
+      "--no-prompt",
+      "--force",
+    ],
+  );
 });
 
 test("rejects package manifests that broaden the host permission", () => {

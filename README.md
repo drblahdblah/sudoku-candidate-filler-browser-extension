@@ -19,9 +19,12 @@ cell's row, column, or 3×3 box. It recalculates after the puzzle changes.
    - Open `about:debugging#/runtime/this-firefox`.
    - Select **Load Temporary Add-on** and choose
      `dist/firefox/manifest.json`.
-5. Open an authenticated puzzle at
+5. For Safari on macOS, follow the [Safari Web Extension wrapper
+   guide](docs/store/safari-webextension.md). It requires Xcode to create and
+   run the host app.
+6. Open an authenticated puzzle at
    `https://www.theage.com.au/puzzles/sudoku/...`.
-6. The extension fills candidates automatically once the grid has loaded.
+7. The extension fills candidates automatically once the grid has loaded.
 
 When you change a number, start a new puzzle, or return focus to the puzzle,
 candidate marks update automatically. Clicking the extension's toolbar icon
@@ -54,6 +57,7 @@ uses one shared manifest definition and emits:
 
 - `dist/chromium`: MV3 service-worker package for Chromium-family browsers.
 - `dist/firefox`: MV3 package with Firefox's non-persistent event background.
+- `dist/safari`: MV3 source package for Apple's Safari Web Extension packager.
 
 Firefox release packaging requires `FIREFOX_GECKO_ID` to be the
 publisher-controlled Gecko add-on ID assigned for the AMO release. It fails if
@@ -62,6 +66,31 @@ ID must be an email-like value of 80 characters or fewer (for example,
 `sudoku-candidate-filler@publisher.example`) or a braced GUID. Local unpacked
 Firefox builds keep the placeholder, and packaging applies the release ID only
 to the generated archive without changing the source manifest or icon assets.
+
+## Safari macOS wrapper
+
+Build Safari-compatible WebExtension source from the shared implementation:
+
+```sh
+npm run build:safari
+```
+
+On a Mac with Xcode's Safari Web Extension packager installed, generate the
+native macOS host-app/Xcode wrapper with:
+
+```sh
+npm run generate:safari-wrapper
+```
+
+The checked-in bundle identifier is the deliberate placeholder
+`com.example.sudokucandidatefiller`. Set `SAFARI_BUNDLE_IDENTIFIER` to an
+Apple Developer-owned identifier before creating a signable release wrapper.
+The generator stages source in ignored `dist/` output and creates the Xcode
+wrapper non-interactively using the configured name, identifier, and fixed
+output path; it never signs, notarizes, uploads, or submits an app. See the
+[Safari wrapper guide and App Store
+checklist](docs/store/safari-webextension.md) for Xcode requirements, local
+testing, placeholder replacement, and release metadata.
 
 After editing extension files, rebuild, reload the extension from its generated
 directory, then refresh the Sudoku page. See [store readiness

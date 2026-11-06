@@ -12,6 +12,7 @@ const {
 } = require("./build.js");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
+const STORE_ARCHIVE_TARGETS = ["chromium", "firefox"];
 const FIREFOX_EMAIL_LIKE_GECKO_ID = /^[a-zA-Z0-9._-]*@[a-zA-Z0-9._-]+$/;
 const FIREFOX_GUID_GECKO_ID =
   /^\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}$/;
@@ -108,7 +109,7 @@ function packageTarget(
 
 function packageAll(outputRoot = DEFAULT_OUTPUT_ROOT, options) {
   const firefoxGeckoId = releaseFirefoxGeckoId(options?.firefoxGeckoId);
-  return Object.keys(TARGET_MANIFEST_PATHS).map((target) =>
+  return STORE_ARCHIVE_TARGETS.map((target) =>
     packageTarget(target, outputRoot, { ...options, firefoxGeckoId }),
   );
 }
