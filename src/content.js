@@ -58,36 +58,34 @@
   }
 
   function resolveSelectedCell(cells) {
-    if (state.lastSelectedCellKey) {
-      const remembered = findCellByKey(cells, state.lastSelectedCellKey);
-      if (remembered) {
-        return remembered;
-      }
-    }
-
     for (const row of cells) {
       for (const cell of row) {
         const button = cell.querySelector("button[data-x][data-y]");
         if (button?.getAttribute?.("aria-selected") === "true") {
+          state.lastSelectedCellKey = getCellKey(cell);
           return cell;
         }
       }
     }
 
     const active = globalThis.document?.activeElement;
-    if (!active) {
-      return null;
-    }
-
-    for (const row of cells) {
-      for (const cell of row) {
-        const button = cell.querySelector("button[data-x][data-y]");
-        if (button === active || cell.contains?.(active)) {
-          return cell;
+    if (active) {
+      for (const row of cells) {
+        for (const cell of row) {
+          const button = cell.querySelector("button[data-x][data-y]");
+          if (button === active || cell.contains?.(active)) {
+            state.lastSelectedCellKey = getCellKey(cell);
+            return cell;
+          }
         }
       }
     }
-    return null;
+
+    // Keypad clicks usually move focus off the grid; fall back to the last cell
+    // the player explicitly selected with a grid click.
+    return state.lastSelectedCellKey
+      ? findCellByKey(cells, state.lastSelectedCellKey)
+      : null;
   }
 
   function rememberSelectedCellFromEvent(event) {
@@ -650,6 +648,7 @@
     }
   });
   observeForPuzzle();
+  document.addEventListener("focusin", rememberSelectedCellFromEvent, true);
   document.addEventListener("click", handlePageClick, true);
   document.addEventListener("keydown", handlePageKeydown, true);
   document.addEventListener("keyup", scheduleRefresh, true);

@@ -611,6 +611,28 @@ test("content script toggles a candidate from pencil-mode keyboard input", async
   assert.equal(cell.spans[1].textContent, "2");
 });
 
+test("content script prefers live aria-selected over a remembered cell", async () => {
+  const environment = createContentEnvironment({ runTimersImmediately: false });
+  await new Promise(queueMicrotask);
+  environment.runPendingTimers();
+  const remembered = environment.cells[0][1];
+  const live = environment.cells[0][2];
+  clickPuzzleCell(environment, remembered);
+  environment.runPendingTimers();
+  live.select();
+
+  environment.documentListeners.keydown({
+    key: "4",
+    preventDefault() {},
+    stopImmediatePropagation() {},
+    stopPropagation() {},
+  });
+  environment.runPendingTimers();
+
+  assert.equal(remembered.spans[3].textContent, "4");
+  assert.equal(live.spans[3].textContent, "\u00a0");
+});
+
 test("content script undoes a pencil restore by re-hiding the candidate", async () => {
   const environment = createContentEnvironment({ runTimersImmediately: false });
   await new Promise(queueMicrotask);
