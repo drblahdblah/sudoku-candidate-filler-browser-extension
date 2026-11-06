@@ -351,24 +351,145 @@ test("content script refreshes repeatedly after the paused-game Continue button"
   assert.equal(nextCells[0][1].spans[2].textContent, "3");
 });
 
-test("content script preserves a manually removed owned candidate after refreshes", async () => {
+test("content script eliminates an owned candidate and leaves its blank slot alone", async () => {
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
-  const manuallyRemovedMark = environment.cells[0][1].spans[1];
-  manuallyRemovedMark.textContent = "\u00a0";
+  const candidateMark = environment.cells[0][1].spans[1];
+  const click = {
+    target: candidateMark,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {},
+  };
 
-  getTableObserver(environment).callback([{ target: manuallyRemovedMark }]);
-  assert.equal(manuallyRemovedMark.textContent, "\u00a0");
+  environment.documentListeners.click(click);
+  assert.equal(click.prevented, true);
+  assert.equal(click.stopped, true);
+  assert.equal(candidateMark.textContent, "\u00a0");
 
   await sendMessage(environment.messageListeners[0], { type: "fill" });
-  assert.equal(manuallyRemovedMark.textContent, "\u00a0");
+  assert.equal(candidateMark.textContent, "\u00a0");
   assert.equal(environment.cells[0][1].spans[2].textContent, "3");
+
+  const blankSlotClick = {
+    target: candidateMark,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {},
+  };
+  environment.documentListeners.click(blankSlotClick);
+  assert.equal(blankSlotClick.prevented, false);
+  assert.equal(blankSlotClick.stopped, false);
+  assert.equal(candidateMark.textContent, "\u00a0");
+});
+
+test("content script does not intercept unowned candidate marks", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  const nativeCandidate = {
+    textContent: "2",
+    closest() {
+      return null;
+    },
+  };
+  const click = {
+    target: nativeCandidate,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {},
+  };
+
+  environment.documentListeners.click(click);
+
+  assert.equal(click.prevented, false);
+  assert.equal(click.stopped, false);
+  assert.equal(environment.cells[0][1].spans[1].textContent, "2");
+
+  const keydown = {
+    key: "Enter",
+    target: nativeCandidate,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {},
+  };
+  environment.documentListeners.keydown(keydown);
+  assert.equal(keydown.prevented, false);
+  assert.equal(keydown.stopped, false);
+});
+
+test("content script eliminates an owned candidate with Enter or Space", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+
+  for (const key of ["Enter", " "]) {
+    const candidateMark = environment.cells[0][1].spans[key === "Enter" ? 1 : 2];
+    const keydown = {
+      key,
+      target: candidateMark,
+      prevented: false,
+      stopped: false,
+      preventDefault() {
+        this.prevented = true;
+      },
+      stopImmediatePropagation() {
+        this.stopped = true;
+      },
+      stopPropagation() {},
+    };
+
+    environment.documentListeners.keydown(keydown);
+
+    assert.equal(keydown.prevented, true);
+    assert.equal(keydown.stopped, true);
+    assert.equal(candidateMark.textContent, "\u00a0");
+  }
 });
 
 test("content script recalculates standard candidates after a solved-value update", async () => {
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
   const solvedCell = environment.cells[0][1];
+  const click = {
+    target: solvedCell.button,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {},
+  };
+
+  environment.documentListeners.click(click);
+  assert.equal(click.prevented, false);
+  assert.equal(click.stopped, false);
+
   solvedCell.setValue(2);
 
   getTableObserver(environment).callback([{ target: solvedCell.button }]);
@@ -381,9 +502,8 @@ test("content script reapplies manual exclusions after candidate spans are repla
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
   const cell = environment.cells[0][1];
-  cell.spans[1].textContent = "\u00a0";
+  environment.documentListeners.click({ target: cell.spans[1] });
   const observer = getTableObserver(environment);
-  observer.callback([{ target: cell.spans[1] }]);
 
   const replacementSpans = cell.replaceCandidateSpans(
     Array.from({ length: 9 }, (_, index) =>
@@ -396,12 +516,12 @@ test("content script reapplies manual exclusions after candidate spans are repla
   assert.equal(replacementSpans[2].textContent, "3");
 });
 
-test("content script remembers a removal when React replaces its owned container", async () => {
+test("content script reapplies a click exclusion when React replaces its owned container", async () => {
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
   const cell = environment.cells[0][1];
   const observer = getTableObserver(environment);
-  cell.spans[1].textContent = "\u00a0";
+  environment.documentListeners.click({ target: cell.spans[1] });
   const { removedContainer, replacementSpans } = cell.replaceCandidateContainer(
     Array.from({ length: 9 }, (_, index) =>
       index === 0 ? "\u00a0" : String(index + 1),
@@ -418,8 +538,7 @@ test("content script resets manual exclusions for a replacement puzzle", async (
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
   const cell = environment.cells[0][1];
-  cell.spans[1].textContent = "\u00a0";
-  getTableObserver(environment).callback([{ target: cell.spans[1] }]);
+  environment.documentListeners.click({ target: cell.spans[1] });
 
   const nextCells = environment.replacePuzzle(1);
   environment.observers.find(
@@ -440,8 +559,8 @@ test("content script resets retained-grid exclusions when the route URL changes"
   const cell = environment.cells[0][1];
   const observer = getTableObserver(environment);
   const removeCandidate = () => {
-    cell.spans[1].textContent = "\u00a0";
-    observer.callback([{ target: cell.spans[1] }]);
+    environment.documentListeners.click({ target: cell.spans[1] });
+    observer.callback([{ target: cell }]);
     environment.runPendingTimers();
     assert.equal(cell.spans[1].textContent, "\u00a0");
   };

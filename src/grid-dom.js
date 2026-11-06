@@ -144,6 +144,30 @@
     return spans;
   }
 
+  function setOwnedCandidateInteraction(container, spans, candidates) {
+    if (container.style) {
+      container.style.pointerEvents = "none";
+    }
+    for (let index = 0; index < spans.length; index += 1) {
+      const span = spans[index];
+      const candidate = index + 1;
+      const isActive = candidates.includes(candidate);
+      if (span.style) {
+        span.style.cursor = isActive ? "pointer" : "";
+        span.style.pointerEvents = isActive ? "auto" : "none";
+      }
+      if (isActive) {
+        span.tabIndex = 0;
+        span.setAttribute?.("role", "button");
+        span.setAttribute?.("aria-label", `Eliminate candidate ${candidate}`);
+      } else {
+        span.tabIndex = -1;
+        span.removeAttribute?.("role");
+        span.removeAttribute?.("aria-label");
+      }
+    }
+  }
+
   function removeOwnedCandidateContainers(cell) {
     for (const container of Array.from(cell.querySelectorAll("div"))) {
       if (container.dataset.scfCandidates === "true") {
@@ -172,7 +196,6 @@
         if (!container) {
           continue;
         }
-
         for (let index = 0; index < spans.length; index += 1) {
           const nextMark = cellCandidates.includes(index + 1)
             ? String(index + 1)
@@ -182,6 +205,7 @@
             updatedSpans.push(spans[index]);
           }
         }
+        setOwnedCandidateInteraction(container, spans, cellCandidates);
       }
     }
     return updatedSpans;
