@@ -20,7 +20,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.theage.com.au/puzzles/sudoku/*"],
-      "js": ["src/candidates.js", "src/grid-dom.js", "src/content.js"],
+      "js": ["src/candidates.js", "src/grid-dom.js", "src/age-ui.js", "src/content.js"],
       "run_at": "document_idle"
     }
   ]

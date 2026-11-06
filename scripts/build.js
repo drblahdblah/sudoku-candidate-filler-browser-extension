@@ -15,6 +15,7 @@ const TARGET_MANIFEST_PATHS = {
 const HOST_PERMISSION = "https://www.theage.com.au/puzzles/sudoku/*";
 const EXPECTED_SOURCE_FILES = [
   "src/background.js",
+  "src/age-ui.js",
   "src/candidates.js",
   "src/content.js",
   "src/grid-dom.js",

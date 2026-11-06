@@ -192,6 +192,7 @@ test("limits store archives to local manifest, source, and icon files", () => {
     "assets/icons/icon-32.png",
     "assets/icons/icon-48.png",
     "manifest.json",
+    "src/age-ui.js",
     "src/background.js",
     "src/candidates.js",
     "src/content.js",

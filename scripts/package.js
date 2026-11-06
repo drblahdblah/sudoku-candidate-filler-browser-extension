@@ -38,6 +38,7 @@ function expectedArchiveFiles() {
   return [
     "manifest.json",
     "src/background.js",
+    "src/age-ui.js",
     "src/candidates.js",
     "src/content.js",
     "src/grid-dom.js",

@@ -2,7 +2,6 @@
   const ENABLED_KEY = "candidateFillerEnabled";
   const CONTINUE_REFRESH_DELAYS = [0, 100, 300, 750, 1500];
   const ROUTE_CHECK_INTERVAL_MS = 250;
-  const PENCIL_TOGGLE_DELAY_MS = 100;
   const state = {
     enabled: true,
     puzzleTable: null,
@@ -12,8 +11,7 @@
     candidateHitTargets: [],
     manualExclusions: new Map(),
     exclusionUndoStack: [],
-    pendingPencilToggles: [],
-    pencilToggleTimer: null,
+    trackedPencilMode: false,
     lastSelectedCellKey: null,
     lastAction: null,
     gridFingerprint: null,
@@ -30,14 +28,43 @@
     state.candidateHitTargets = [];
     state.manualExclusions = new Map();
     state.exclusionUndoStack = [];
-    state.pendingPencilToggles = [];
-    if (state.pencilToggleTimer != null) {
-      window.clearTimeout(state.pencilToggleTimer);
-      state.pencilToggleTimer = null;
-    }
+    state.trackedPencilMode = false;
     state.lastSelectedCellKey = null;
     state.lastAction = null;
     state.gridFingerprint = null;
+  }
+
+  function isPencilModeActive() {
+    return globalThis.SudokuAgeUi.isAgePencilModeActive(
+      document,
+      state.trackedPencilMode,
+    );
+  }
+
+  function syncTrackedPencilModeFromDom() {
+    const control = globalThis.SudokuAgeUi.findPencilModeControl(document);
+    if (!control) {
+      return state.trackedPencilMode;
+    }
+    const pressed = globalThis.SudokuAgeUi.readPressedAttribute(control);
+    if (pressed != null) {
+      state.trackedPencilMode = pressed;
+    }
+    return state.trackedPencilMode;
+  }
+
+  function handlePencilModeButtonClick(event) {
+    const control = event.target?.closest?.("button, [role='button']");
+    if (!globalThis.SudokuAgeUi.isPencilModeControl(control)) {
+      return false;
+    }
+
+    // Capture-phase click: flip tracked state, then sync if aria-pressed exists.
+    state.trackedPencilMode = !state.trackedPencilMode;
+    window.setTimeout(() => {
+      syncTrackedPencilModeFromDom();
+    }, 0);
+    return true;
   }
 
   function getCellKey(cell) {
@@ -121,14 +148,6 @@
     }
     if (changed) {
       state.manualExclusions = exclusions;
-    }
-  }
-
-  function cancelPendingPencilToggles() {
-    state.pendingPencilToggles = [];
-    if (state.pencilToggleTimer != null) {
-      window.clearTimeout(state.pencilToggleTimer);
-      state.pencilToggleTimer = null;
     }
   }
 
@@ -314,8 +333,16 @@
       return null;
     }
 
-    const text = (control.textContent ?? "").trim();
-    return /^[1-9]$/.test(text) ? Number(text) : null;
+    for (const value of [
+      (control.textContent ?? "").trim(),
+      control.getAttribute?.("aria-label")?.trim(),
+      control.getAttribute?.("title")?.trim(),
+    ]) {
+      if (/^[1-9]$/.test(value)) {
+        return Number(value);
+      }
+    }
+    return null;
   }
 
   function isUndoButton(event) {
@@ -398,10 +425,9 @@
       const grid = globalThis.SudokuGridDom.readGrid(cells);
       const fingerprint = gridFingerprint(grid);
       if (state.gridFingerprint !== null && fingerprint !== state.gridFingerprint) {
-        // A real digit change means the page owns Undo; drop stale pencil intents.
+        // A real digit change means the page owns Undo.
         state.lastAction = "grid";
         state.exclusionUndoStack = [];
-        cancelPendingPencilToggles();
       }
       state.gridFingerprint = fingerprint;
       pruneExclusionsForFilledCells(cells);
@@ -460,74 +486,11 @@
     }
   }
 
-  function queuePencilToggle(key, digit) {
-    state.pendingPencilToggles = [
-      ...state.pendingPencilToggles,
-      {
-        key,
-        digit,
-        fingerprint: state.gridFingerprint,
-      },
-    ];
-    if (state.pencilToggleTimer != null) {
-      return;
-    }
-    state.pencilToggleTimer = window.setTimeout(() => {
-      state.pencilToggleTimer = null;
-      const batch = state.pendingPencilToggles;
-      state.pendingPencilToggles = [];
-      let changed = false;
-      for (const pending of batch) {
-        changed = applyPendingPencilToggle(pending) || changed;
-      }
-      if (changed) {
-        refreshCandidates();
-      }
-    }, PENCIL_TOGGLE_DELAY_MS);
-  }
-
-  function applyPendingPencilToggle(pending) {
-    if (!pending || !state.enabled) {
-      return false;
-    }
-
-    const table = state.puzzleTable;
-    const cells = table && globalThis.SudokuGridDom.getPuzzleCells(table);
-    if (!cells) {
-      return false;
-    }
-
-    let grid;
-    try {
-      grid = globalThis.SudokuGridDom.readGrid(cells);
-    } catch (_error) {
-      return false;
-    }
-
-    if (gridFingerprint(grid) !== pending.fingerprint) {
-      // Normal mode placed or changed a digit; leave candidate exclusions alone.
-      return false;
-    }
-
-    const cell = findCellByKey(cells, pending.key);
-    if (!cell || globalThis.SudokuGridDom.readCellValue(cell) !== 0) {
-      return false;
-    }
-
-    const standardCandidates = globalThis.SudokuCandidates.calculateCandidates(grid);
-    let available = null;
-    for (let row = 0; row < cells.length; row += 1) {
-      for (let column = 0; column < cells[row].length; column += 1) {
-        if (getCellKey(cells[row][column]) === pending.key) {
-          available = standardCandidates[row][column];
-        }
-      }
-    }
-
-    return toggleManualCandidate(pending.key, pending.digit, available);
-  }
-
   function handlePencilDigitInput(event) {
+    if (!state.enabled || !isPencilModeActive()) {
+      return false;
+    }
+
     const digit = readEnteredDigit(event);
     if (!digit || !state.puzzleTable) {
       return false;
@@ -544,7 +507,27 @@
       return false;
     }
 
-    queuePencilToggle(key, digit);
+    let grid;
+    try {
+      grid = globalThis.SudokuGridDom.readGrid(cells);
+    } catch (_error) {
+      return false;
+    }
+
+    const standardCandidates = globalThis.SudokuCandidates.calculateCandidates(grid);
+    let available = null;
+    for (let row = 0; row < cells.length; row += 1) {
+      for (let column = 0; column < cells[row].length; column += 1) {
+        if (getCellKey(cells[row][column]) === key) {
+          available = standardCandidates[row][column];
+        }
+      }
+    }
+
+    if (!toggleManualCandidate(key, digit, available)) {
+      return false;
+    }
+    refreshCandidates();
     return true;
   }
 
@@ -576,6 +559,10 @@
 
   function handlePageClick(event) {
     rememberSelectedCellFromEvent(event);
+    if (handlePencilModeButtonClick(event)) {
+      scheduleRefresh();
+      return;
+    }
     if (handleCandidateElimination(event)) {
       return;
     }
@@ -583,7 +570,9 @@
       return;
     }
 
-    handlePencilDigitInput(event);
+    if (handlePencilDigitInput(event)) {
+      return;
+    }
     scheduleRefresh();
 
     const button = event.target.closest?.("button");
