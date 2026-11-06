@@ -10,6 +10,7 @@ const FIREFOX_PLACEHOLDER_GECKO_ID = "sudoku-candidate-filler@example.invalid";
 const TARGET_MANIFEST_PATHS = {
   chromium: path.join(ROOT_DIR, "manifests", "chromium.json"),
   firefox: path.join(ROOT_DIR, "manifests", "firefox.json"),
+  safari: path.join(ROOT_DIR, "manifests", "safari.json"),
 };
 const HOST_PERMISSION = "https://www.theage.com.au/puzzles/sudoku/*";
 const EXPECTED_SOURCE_FILES = [
@@ -95,15 +96,15 @@ function validateCommonManifest(manifest) {
 
 function validateTargetManifest(target, manifest) {
   validateCommonManifest(manifest);
-  if (target === "chromium") {
+  if (target === "chromium" || target === "safari") {
     assert(
       manifest.background?.service_worker === "src/background.js",
-      "Chromium must use src/background.js as its service worker",
+      `${target} must use src/background.js as its service worker`,
     );
-    assert(!manifest.background.scripts, "Chromium must not use background scripts");
+    assert(!manifest.background.scripts, `${target} must not use background scripts`);
     assert(
       !manifest.browser_specific_settings,
-      "Chromium must not include Firefox-specific settings",
+      `${target} must not include Firefox-specific settings`,
     );
     return;
   }
@@ -186,7 +187,7 @@ function parseTargetArgument(argumentsList) {
   if (argumentsList.length === 2 && argumentsList[0] === "--target") {
     return argumentsList[1];
   }
-  throw new Error("Usage: node scripts/build.js [--target chromium|firefox]");
+  throw new Error("Usage: node scripts/build.js [--target chromium|firefox|safari]");
 }
 
 if (require.main === module) {

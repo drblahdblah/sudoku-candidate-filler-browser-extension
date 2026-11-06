@@ -52,6 +52,20 @@ signing, uploads, review requests, or store submissions.
 - Complete AMO's current source, licensing, privacy, and reviewer notes using
   the documents in this directory.
 
+## macOS Safari / Mac App Store
+
+- Follow the [Safari Web Extension wrapper guide](safari-webextension.md) to
+  generate the Xcode host app from `dist/safari`; generated Apple project files
+  are intentionally not committed.
+- Replace the documented placeholder bundle identifier,
+  `com.example.sudokucandidatefiller`, with the publisher-controlled Apple
+  identifier before signing.
+- Complete the App Store Connect metadata, privacy, screenshot, review-note,
+  signing, and archive checks in that guide. Do not upload or submit from this
+  repository.
+- Confirm the generated Safari manifest retains only `storage` and
+  `https://www.theage.com.au/puzzles/sudoku/*`.
+
 ## Opera, Brave, and Vivaldi
 
 - The Chromium ZIP uses the standard MV3 Chromium target and is the starting

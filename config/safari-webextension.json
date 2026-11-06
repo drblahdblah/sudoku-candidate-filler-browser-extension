@@ -1,0 +1,6 @@
+{
+  "appName": "Sudoku Candidate Filler",
+  "bundleIdentifier": "com.example.sudokucandidatefiller",
+  "platform": "macos",
+  "sourceTarget": "safari"
+}

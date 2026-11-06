@@ -7,6 +7,8 @@
     "build": "node scripts/build.js",
     "build:chromium": "node scripts/build.js --target chromium",
     "build:firefox": "node scripts/build.js --target firefox",
+    "build:safari": "node scripts/build.js --target safari",
+    "generate:safari-wrapper": "node scripts/generate-safari-wrapper.js",
     "generate:icons": "node scripts/generate-icons.js",
     "package": "node scripts/package.js",
     "test": "node --test"
