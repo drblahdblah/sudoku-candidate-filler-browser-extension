@@ -14,8 +14,22 @@
     );
   }
 
+  function getOwnedCandidateContainer(cell) {
+    return Array.from(cell.querySelectorAll("div")).find(
+      (element) =>
+        element.dataset.scfCandidates === "true" &&
+        Array.from(element.children).length === GRID_SIZE &&
+        Array.from(element.children).every((child) => child.tagName === "SPAN"),
+    );
+  }
+
   function getCandidateSpans(cell) {
     const candidateContainer = getCandidateContainer(cell);
+    return candidateContainer ? Array.from(candidateContainer.children) : null;
+  }
+
+  function getOwnedCandidateSpans(cell) {
+    const candidateContainer = getOwnedCandidateContainer(cell);
     return candidateContainer ? Array.from(candidateContainer.children) : null;
   }
 
@@ -149,13 +163,13 @@
           continue;
         }
 
-        const spans = getCandidateSpans(cells[row][column]) ??
+        const spans = getOwnedCandidateSpans(cells[row][column]) ??
           createCandidateSpans(cells[row][column], template);
         if (!spans) {
           continue;
         }
-        const container = getCandidateContainer(cells[row][column]);
-        if (container.dataset.scfCandidates !== "true") {
+        const container = getOwnedCandidateContainer(cells[row][column]);
+        if (!container) {
           continue;
         }
 
@@ -176,6 +190,7 @@
   const api = Object.freeze({
     findPuzzleTable,
     getCandidateSpans,
+    getOwnedCandidateSpans,
     getPuzzleCells,
     hasConsistentCellCoordinates,
     readCellValue,

@@ -191,6 +191,60 @@ test("preserves manual candidate marks in an empty cell", () => {
   assert.equal(cells[0][0].spans[1].textContent, "\u00a0");
 });
 
+test("creates owned marks without overwriting an unowned candidate container", () => {
+  const unownedSpans = Array.from({ length: 9 }, () => ({
+    tagName: "SPAN",
+    textContent: "manual",
+  }));
+  const unownedContainer = {
+    children: unownedSpans,
+    dataset: {},
+    cloneNode() {
+      return createCandidateContainer();
+    },
+  };
+  const ownedContainers = [];
+  const cell = {
+    button: {
+      dataset: { x: "0", y: "0" },
+      textContent: "",
+    },
+    ownerDocument: {
+      createElement(tagName) {
+        return tagName === "div"
+          ? createCandidateContainer()
+          : { tagName: "SPAN", textContent: "" };
+      },
+    },
+    append(container) {
+      ownedContainers.push(container);
+    },
+    querySelector(selector) {
+      return selector === "button[data-x][data-y]" ? this.button : null;
+    },
+    querySelectorAll(selector) {
+      return selector === "div" ? [unownedContainer, ...ownedContainers] : [];
+    },
+  };
+  const cells = Array.from({ length: 9 }, () =>
+    Array.from({ length: 9 }, () => createCandidateCell()),
+  );
+  cells[0][0] = cell;
+  const candidates = Array.from({ length: 9 }, () => Array(9).fill(null));
+  candidates[0][0] = [2, 4];
+
+  renderCandidates(cells, candidates);
+
+  assert.deepEqual(
+    unownedSpans.map((span) => span.textContent),
+    Array(9).fill("manual"),
+  );
+  assert.deepEqual(
+    ownedContainers[0].children.map((span) => span.textContent),
+    ["\u00a0", "2", "\u00a0", "4", "\u00a0", "\u00a0", "\u00a0", "\u00a0", "\u00a0"],
+  );
+});
+
 test("creates a native-style candidate container for an empty button without one", () => {
   const cells = Array.from({ length: 9 }, () =>
     Array.from({ length: 9 }, () => createCandidateCell()),
