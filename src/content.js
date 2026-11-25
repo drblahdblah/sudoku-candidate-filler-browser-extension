@@ -13,6 +13,7 @@
     exclusionUndoStack: [],
     trackedPencilMode: false,
     armedDigit: null,
+    completedDigits: new Set(),
     lastSelectedCellKey: null,
     lastAction: null,
     gridFingerprint: null,
@@ -31,9 +32,38 @@
     state.exclusionUndoStack = [];
     state.trackedPencilMode = false;
     state.armedDigit = null;
+    state.completedDigits = new Set();
     state.lastSelectedCellKey = null;
     state.lastAction = null;
     state.gridFingerprint = null;
+    globalThis.SudokuAgeUi.applyCompletedDigitFreeze(document, []);
+  }
+
+  function isDigitComplete(digit) {
+    return state.completedDigits.has(digit);
+  }
+
+  function syncCompletedDigitFreeze(grid = null) {
+    if (!state.enabled) {
+      state.completedDigits = new Set();
+      globalThis.SudokuAgeUi.applyCompletedDigitFreeze(document, []);
+      return;
+    }
+
+    const completed = grid
+      ? globalThis.SudokuCandidates.getCompletedDigits(grid)
+      : [];
+    state.completedDigits = new Set(completed);
+    if (
+      state.armedDigit != null &&
+      state.completedDigits.has(state.armedDigit)
+    ) {
+      state.armedDigit = null;
+    }
+    globalThis.SudokuAgeUi.applyCompletedDigitFreeze(
+      document,
+      state.completedDigits,
+    );
   }
 
   function isPencilModeActive() {
@@ -446,6 +476,7 @@
   function refreshCandidates() {
     state.scheduled = false;
     if (!state.enabled) {
+      syncCompletedDigitFreeze();
       state.lastStatus = "Automatic candidates are disabled.";
       return { ok: true, status: state.lastStatus };
     }
@@ -455,6 +486,7 @@
     watchPuzzleTable(table);
     const cells = table && globalThis.SudokuGridDom.getPuzzleCells(table);
     if (!cells) {
+      syncCompletedDigitFreeze();
       state.lastStatus = "No supported Sudoku grid found on this page.";
       return { ok: false, status: state.lastStatus };
     }
@@ -483,10 +515,12 @@
       window.queueMicrotask(() => {
         state.renderedSpans = null;
       });
+      syncCompletedDigitFreeze(grid);
       state.lastStatus = "Candidates are up to date.";
       return { ok: true, status: state.lastStatus };
     } catch (error) {
       console.warn("Sudoku Candidate Filler could not read this grid.", error);
+      syncCompletedDigitFreeze();
       state.lastStatus = "The puzzle has conflicting values; candidates were not changed.";
       return { ok: false, status: state.lastStatus };
     }
@@ -524,10 +558,53 @@
     }
   }
 
+  function isEditableFieldTarget(target) {
+    const element = target?.nodeType === 1 ? target : target?.parentElement;
+    if (!element) {
+      return false;
+    }
+    const tag = element.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+      return true;
+    }
+    if (element.isContentEditable) {
+      return true;
+    }
+    return Boolean(
+      element.closest?.('input, textarea, select, [contenteditable="true"]'),
+    );
+  }
+
+  function handleCompletedDigitBlock(event) {
+    const digit = readEnteredDigit(event);
+    if (!state.enabled || !digit || !isDigitComplete(digit)) {
+      return false;
+    }
+    if (typeof event.key === "string" && isEditableFieldTarget(event.target)) {
+      return false;
+    }
+    const control = event.target?.closest?.("button, [role='button']");
+    if (
+      control &&
+      control.dataset?.x == null &&
+      control.dataset?.scfDigitComplete !== "true" &&
+      typeof event.key !== "string"
+    ) {
+      // Click targets should be extension-frozen keypad controls only.
+      return false;
+    }
+    stopEvent(event);
+    return true;
+  }
+
   function handlePencilDigitInput(event) {
     const digit = readEnteredDigit(event);
     if (!state.enabled || !isPencilModeActive() || !digit || !state.puzzleTable) {
       return false;
+    }
+    if (isDigitComplete(digit)) {
+      stopEvent(event);
+      return true;
     }
 
     state.armedDigit = digit;
@@ -564,7 +641,7 @@
     }
 
     const digit = resolveArmedDigit();
-    if (!digit) {
+    if (!digit || isDigitComplete(digit)) {
       return false;
     }
 
@@ -625,6 +702,9 @@
     if (isUndoButton(event) && handleExtensionUndo(event)) {
       return;
     }
+    if (handleCompletedDigitBlock(event)) {
+      return;
+    }
 
     // Prefer digit-first: armed digit + puzzle cell click.
     if (handlePencilCellClick(event)) {
@@ -643,6 +723,9 @@
 
   function handlePageKeydown(event) {
     if (isUndoKey(event) && handleExtensionUndo(event)) {
+      return;
+    }
+    if (handleCompletedDigitBlock(event)) {
       return;
     }
     handlePencilDigitInput(event);
@@ -668,6 +751,9 @@
           const result = state.enabled
             ? refreshCandidates()
             : { ok: true, status: "Automatic candidates are disabled." };
+          if (!state.enabled) {
+            syncCompletedDigitFreeze();
+          }
           state.lastStatus = result.status;
           sendResponse({ enabled: state.enabled, ...result });
         })
@@ -688,7 +774,11 @@
     }
 
     state.enabled = changes[ENABLED_KEY].newValue !== false;
-    scheduleRefresh();
+    if (state.enabled) {
+      scheduleRefresh();
+    } else {
+      syncCompletedDigitFreeze();
+    }
   });
 
   discoveryObserver = new MutationObserver(() => {

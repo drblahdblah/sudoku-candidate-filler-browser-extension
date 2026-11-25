@@ -46,6 +46,10 @@ The extension follows The Age **Pencil mode** button:
 3. **Hybrid:** switch Pencil mode on and off as needed—edit candidates when
    stuck, place full digits when a singleton is clear.
 
+When all nine copies of a digit are filled on the grid, that keypad number is
+greyed out and blocked until the puzzle is reset or one of those digits is
+cleared.
+
 Option/Alt-click on an extension mini-digit remains a secondary way to hide a
 candidate. Plain clicks still reach The Age cell controls.
 

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  applyCompletedDigitFreeze,
   findArmedDigit,
   findPencilModeControl,
   isAgePencilModeActive,
@@ -36,11 +37,26 @@ function createButton({
     getAttribute(name) {
       return attributes.get(name) ?? null;
     },
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
   };
 }
 
 function createDocument(buttons) {
+  const styles = [];
   return {
+    head: {
+      append(node) {
+        styles.push(node);
+      },
+    },
+    createElement(tagName) {
+      return { tagName, dataset: {}, textContent: "" };
+    },
     querySelectorAll(selector) {
       if (selector === "button[data-n]") {
         return buttons.filter((button) => button.dataset?.n != null);
@@ -54,8 +70,12 @@ function createDocument(buttons) {
       if (selector === 'button[data-n="0"]') {
         return buttons.find((button) => button.dataset?.n === "0") ?? null;
       }
+      if (selector === "style[data-scf-digit-complete-style]") {
+        return styles[0] ?? null;
+      }
       return null;
     },
+    styles,
   };
 }
 
@@ -149,4 +169,25 @@ test("reads keypad digits from repeated Age accessible labels", () => {
     readDigitFromControl(createButton({ textContent: "2", dataset: { x: "1" } })),
     null,
   );
+});
+
+test("freezes completed Age keypad digits and restores them when cleared", () => {
+  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) =>
+    createButton({
+      textContent: String(digit),
+      dataset: { n: String(digit) },
+    }),
+  );
+  const documentRoot = createDocument(digits);
+
+  applyCompletedDigitFreeze(documentRoot, [1]);
+  assert.equal(digits[0].dataset.scfDigitComplete, "true");
+  assert.equal(digits[1].dataset.scfDigitComplete, undefined);
+  assert.equal(documentRoot.styles.length, 1);
+  assert.match(documentRoot.styles[0].textContent, /opacity/);
+  assert.doesNotMatch(documentRoot.styles[0].textContent, /pointer-events/);
+
+  applyCompletedDigitFreeze(documentRoot, []);
+  assert.equal(digits[0].dataset.scfDigitComplete, undefined);
+  assert.equal(documentRoot.styles.length, 1);
 });

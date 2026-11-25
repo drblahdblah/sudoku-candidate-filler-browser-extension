@@ -165,18 +165,55 @@ function createContentEnvironment({
     },
   };
   let pencilButton = null;
+  const keypadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => {
+    const attributes = new Map();
+    return {
+      textContent: String(digit),
+      dataset: { n: String(digit) },
+      getAttribute(name) {
+        return attributes.get(name) ?? null;
+      },
+      setAttribute(name, value) {
+        attributes.set(name, value);
+      },
+      removeAttribute(name) {
+        attributes.delete(name);
+      },
+      closest(selector) {
+        return selector.includes("button") ? this : null;
+      },
+    };
+  });
+  const injectedStyles = [];
   const documentRoot = {
     documentElement: {},
     activeElement: null,
+    head: {
+      append(node) {
+        injectedStyles.push(node);
+      },
+    },
+    createElement(tagName) {
+      return { tagName, dataset: {}, textContent: "" };
+    },
     addEventListener(type, listener) {
       documentListeners[type] = listener;
+    },
+    querySelector(selector) {
+      if (selector === "style[data-scf-digit-complete-style]") {
+        return injectedStyles[0] ?? null;
+      }
+      return null;
     },
     querySelectorAll(selector) {
       if (selector === "table") {
         return [activeTable];
       }
+      if (selector === "button[data-n]") {
+        return keypadButtons;
+      }
       if (selector === "button, [role='button']") {
-        return pencilButton ? [pencilButton] : [];
+        return pencilButton ? [...keypadButtons, pencilButton] : [...keypadButtons];
       }
       return [];
     },
@@ -188,6 +225,9 @@ function createContentEnvironment({
       calculateCandidates(grid) {
         candidateCalculationCalls.push(grid);
         return SudokuCandidates.calculateCandidates(grid);
+      },
+      getCompletedDigits(grid) {
+        return SudokuCandidates.getCompletedDigits(grid);
       },
     },
     SudokuGridDom,
@@ -261,6 +301,7 @@ function createContentEnvironment({
     documentListeners,
     documentRoot,
     intervals,
+    keypadButtons,
     location,
     messageListeners,
     observers,
@@ -619,26 +660,82 @@ function disablePencilMode(environment, pencilButton) {
 }
 
 function clickKeypadDigit(environment, digit) {
-  const keypad = {
-    textContent: String(digit),
-    dataset: {},
-    getAttribute(name) {
-      return name === "aria-label" ? String(digit) : null;
-    },
-    closest(selector) {
-      return selector.includes("button") ? this : null;
-    },
-  };
-  environment.documentListeners.click({
+  const keypad =
+    environment.keypadButtons?.[digit - 1] ??
+    {
+      textContent: String(digit),
+      dataset: { n: String(digit) },
+      getAttribute(name) {
+        return name === "aria-label" ? String(digit) : null;
+      },
+      closest(selector) {
+        return selector.includes("button") ? this : null;
+      },
+    };
+  const event = {
     target: keypad,
     closest(selector) {
       return keypad.closest(selector);
     },
-    preventDefault() {},
-    stopImmediatePropagation() {},
-    stopPropagation() {},
-  });
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    },
+    stopPropagation() {
+      this.stopped = true;
+    },
+  };
+  environment.documentListeners.click(event);
+  return event;
 }
+
+function placeCompletedOnes(environment) {
+  const ones = [
+    [0, 0],
+    [1, 3],
+    [2, 6],
+    [3, 1],
+    [4, 4],
+    [5, 7],
+    [6, 2],
+    [7, 5],
+    [8, 8],
+  ];
+  for (const [row, column] of ones) {
+    if (typeof environment.cells[row][column].setValue === "function") {
+      environment.cells[row][column].setValue(1);
+    } else {
+      environment.cells[row][column] = createFilledCell(1, column, row);
+    }
+  }
+}
+
+test("content script freezes completed keypad digits and blocks further use", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+
+  placeCompletedOnes(environment);
+  await sendMessage(environment.messageListeners[0], { type: "fill" });
+
+  assert.equal(environment.keypadButtons[0].dataset.scfDigitComplete, "true");
+  assert.equal(environment.keypadButtons[1].dataset.scfDigitComplete, undefined);
+
+  const blocked = clickKeypadDigit(environment, 1);
+  assert.equal(blocked.prevented, true);
+  assert.equal(blocked.stopped, true);
+
+  environment.cells[0][0] = createCandidateCell();
+  environment.cells[0][0].setCoordinates(0, 0);
+  await sendMessage(environment.messageListeners[0], { type: "fill" });
+
+  assert.equal(environment.keypadButtons[0].dataset.scfDigitComplete, undefined);
+  const allowed = clickKeypadDigit(environment, 1);
+  assert.equal(allowed.prevented, false);
+});
 
 test("content script toggles a candidate from pencil-mode keypad input", async () => {
   const environment = createContentEnvironment();
