@@ -212,7 +212,50 @@
     return trackedPencilMode === true;
   }
 
+  function ensureCompletedDigitStyles(documentRoot) {
+    if (
+      !documentRoot?.head ||
+      documentRoot.querySelector?.("style[data-scf-digit-complete-style]")
+    ) {
+      return;
+    }
+    const style = documentRoot.createElement("style");
+    style.dataset.scfDigitCompleteStyle = "true";
+    style.textContent =
+      'button[data-n][data-scf-digit-complete="true"],' +
+      'button[data-scf-digit-complete="true"]{' +
+      "opacity:.35!important;" +
+      "filter:grayscale(1)!important;" +
+      "cursor:not-allowed!important;" +
+      "}";
+    documentRoot.head.append(style);
+  }
+
+  function applyCompletedDigitFreeze(
+    documentRoot,
+    completedDigits = [],
+  ) {
+    ensureCompletedDigitStyles(documentRoot);
+    const completed = new Set(
+      Array.from(completedDigits).filter(
+        (digit) => digit >= 1 && digit <= 9,
+      ),
+    );
+    for (const control of findKeypadDigitControls(documentRoot)) {
+      const digit = readDigitFromControl(control);
+      if (!digit || !control.dataset) {
+        continue;
+      }
+      if (completed.has(digit)) {
+        control.dataset.scfDigitComplete = "true";
+      } else {
+        delete control.dataset.scfDigitComplete;
+      }
+    }
+  }
+
   const api = Object.freeze({
+    applyCompletedDigitFreeze,
     controlLabel,
     findArmedDigit,
     findKeypadDigitControls,

@@ -89,7 +89,24 @@
     );
   }
 
-  const api = Object.freeze({ calculateCandidates, validateGrid });
+  function getCompletedDigits(grid) {
+    validateGrid(grid);
+    const counts = Array(GRID_SIZE + 1).fill(0);
+    for (const row of grid) {
+      for (const value of row) {
+        if (value >= 1 && value <= GRID_SIZE) {
+          counts[value] += 1;
+        }
+      }
+    }
+    return DIGITS.filter((digit) => counts[digit] >= GRID_SIZE);
+  }
+
+  const api = Object.freeze({
+    calculateCandidates,
+    getCompletedDigits,
+    validateGrid,
+  });
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;

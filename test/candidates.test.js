@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   calculateCandidates,
+  getCompletedDigits,
   validateGrid,
 } = require("../src/candidates.js");
 
@@ -68,4 +69,28 @@ test("rejects malformed and contradictory grids", () => {
       ]),
     RangeError,
   );
+});
+
+test("reports digits that already appear nine times on the grid", () => {
+  const grid = EMPTY_GRID.map((row) => [...row]);
+  const ones = [
+    [0, 0],
+    [1, 3],
+    [2, 6],
+    [3, 1],
+    [4, 4],
+    [5, 7],
+    [6, 2],
+    [7, 5],
+    [8, 8],
+  ];
+  for (const [row, column] of ones) {
+    grid[row][column] = 1;
+  }
+
+  assert.deepEqual(getCompletedDigits(grid), [1]);
+  assert.deepEqual(getCompletedDigits(EMPTY_GRID), []);
+
+  grid[0][0] = 0;
+  assert.deepEqual(getCompletedDigits(grid), []);
 });
