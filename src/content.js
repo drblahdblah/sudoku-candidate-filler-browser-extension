@@ -378,6 +378,58 @@
     return globalThis.SudokuAgeUi.findArmedDigit(document, state.armedDigit);
   }
 
+  function readRememberedFilledDigit(cells) {
+    if (!state.lastSelectedCellKey) {
+      return null;
+    }
+    const remembered = findCellByKey(cells, state.lastSelectedCellKey);
+    if (!remembered) {
+      return null;
+    }
+    const value = globalThis.SudokuGridDom.readCellValue(remembered);
+    return value >= 1 && value <= 9 ? value : null;
+  }
+
+  function resolveHighlightDigit(cells, source = "auto") {
+    const armed = resolveArmedDigit();
+    const remembered = readRememberedFilledDigit(cells);
+
+    if (source === "digit") {
+      return armed;
+    }
+    if (source === "cell") {
+      return remembered ?? armed;
+    }
+
+    const selected = resolveSelectedCell(cells);
+    const selectedValue = selected
+      ? globalThis.SudokuGridDom.readCellValue(selected)
+      : 0;
+    if (selectedValue >= 1 && selectedValue <= 9) {
+      return selectedValue;
+    }
+    return remembered ?? armed;
+  }
+
+  function updateDigitHighlights(cells = null, source = "auto") {
+    const puzzleCells =
+      cells ??
+      (state.puzzleTable &&
+        globalThis.SudokuGridDom.getPuzzleCells(state.puzzleTable));
+    if (!puzzleCells) {
+      return;
+    }
+
+    const digit = state.enabled
+      ? resolveHighlightDigit(puzzleCells, source)
+      : null;
+    globalThis.SudokuGridDom.applySameDigitHighlights(
+      puzzleCells,
+      digit,
+      document,
+    );
+  }
+
   function toggleCandidateForCell(cell, digit) {
     const key = getCellKey(cell);
     if (!key || globalThis.SudokuGridDom.readCellValue(cell) !== 0) {
@@ -477,6 +529,7 @@
     state.scheduled = false;
     if (!state.enabled) {
       syncCompletedDigitFreeze();
+      updateDigitHighlights();
       state.lastStatus = "Automatic candidates are disabled.";
       return { ok: true, status: state.lastStatus };
     }
@@ -487,6 +540,7 @@
     const cells = table && globalThis.SudokuGridDom.getPuzzleCells(table);
     if (!cells) {
       syncCompletedDigitFreeze();
+      updateDigitHighlights();
       state.lastStatus = "No supported Sudoku grid found on this page.";
       return { ok: false, status: state.lastStatus };
     }
@@ -516,11 +570,13 @@
         state.renderedSpans = null;
       });
       syncCompletedDigitFreeze(grid);
+      updateDigitHighlights(cells);
       state.lastStatus = "Candidates are up to date.";
       return { ok: true, status: state.lastStatus };
     } catch (error) {
       console.warn("Sudoku Candidate Filler could not read this grid.", error);
       syncCompletedDigitFreeze();
+      updateDigitHighlights();
       state.lastStatus = "The puzzle has conflicting values; candidates were not changed.";
       return { ok: false, status: state.lastStatus };
     }
@@ -599,6 +655,9 @@
 
   function handlePencilDigitInput(event) {
     const digit = readEnteredDigit(event);
+    if (digit) {
+      state.armedDigit = digit;
+    }
     if (!state.enabled || !isPencilModeActive() || !digit || !state.puzzleTable) {
       return false;
     }
@@ -607,19 +666,14 @@
       return true;
     }
 
-    state.armedDigit = digit;
-
     const cells = globalThis.SudokuGridDom.getPuzzleCells(state.puzzleTable);
     if (!cells) {
       return false;
     }
 
-    // Keypad clicks follow Age digit-first UX: arm and wait for cell clicks.
-    // Keyboard digits still toggle the live/remembered selected cell.
-    const fromKeyboard = typeof event.key === "string";
-    const selected = resolveSelectedCell(cells, {
-      allowRemembered: fromKeyboard,
-    });
+    // Yellow-cell pencil editing: toggle only the selected/remembered cell.
+    // Clicking another square does not auto-apply the armed digit.
+    const selected = resolveSelectedCell(cells, { allowRemembered: true });
     if (!selected) {
       return true;
     }
@@ -628,40 +682,6 @@
     }
     stopEvent(event);
     return true;
-  }
-
-  function handlePencilCellClick(event) {
-    if (!state.enabled || !isPencilModeActive() || !state.puzzleTable) {
-      return false;
-    }
-
-    const button = event.target?.closest?.("button[data-x][data-y]");
-    if (!button) {
-      return false;
-    }
-
-    const digit = resolveArmedDigit();
-    if (!digit || isDigitComplete(digit)) {
-      return false;
-    }
-
-    const cells = globalThis.SudokuGridDom.getPuzzleCells(state.puzzleTable);
-    if (!cells) {
-      return false;
-    }
-
-    for (const row of cells) {
-      for (const cell of row) {
-        if (cell.querySelector("button[data-x][data-y]") === button) {
-          if (!toggleCandidateForCell(cell, digit)) {
-            return false;
-          }
-          stopEvent(event);
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   function handleCandidateElimination(event) {
@@ -692,8 +712,14 @@
 
   function handlePageClick(event) {
     rememberSelectedCellFromEvent(event);
+    const gridCellClick = Boolean(
+      event.target?.closest?.("button[data-x][data-y]"),
+    );
+    const digitClick = Boolean(readEnteredDigit(event));
+
     if (handlePencilModeButtonClick(event)) {
       scheduleRefresh();
+      updateDigitHighlights();
       return;
     }
     if (handleCandidateElimination(event)) {
@@ -706,13 +732,14 @@
       return;
     }
 
-    // Prefer digit-first: armed digit + puzzle cell click.
-    if (handlePencilCellClick(event)) {
-      return;
-    }
     if (handlePencilDigitInput(event)) {
+      updateDigitHighlights(null, "digit");
       return;
     }
+    updateDigitHighlights(
+      null,
+      digitClick ? "digit" : gridCellClick ? "cell" : "auto",
+    );
     scheduleRefresh();
 
     const button = event.target.closest?.("button");
@@ -728,7 +755,9 @@
     if (handleCompletedDigitBlock(event)) {
       return;
     }
+    const digitClick = Boolean(readEnteredDigit(event));
     handlePencilDigitInput(event);
+    updateDigitHighlights(null, digitClick ? "digit" : "auto");
   }
 
   function handleMessage(message, _sender, sendResponse) {
@@ -753,6 +782,7 @@
             : { ok: true, status: "Automatic candidates are disabled." };
           if (!state.enabled) {
             syncCompletedDigitFreeze();
+            updateDigitHighlights();
           }
           state.lastStatus = result.status;
           sendResponse({ enabled: state.enabled, ...result });
@@ -778,6 +808,7 @@
       scheduleRefresh();
     } else {
       syncCompletedDigitFreeze();
+      updateDigitHighlights();
     }
   });
 

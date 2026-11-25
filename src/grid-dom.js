@@ -226,7 +226,50 @@
     return updatedSpans;
   }
 
+  // The Age masthead / CTA blue.
+  const AGE_BANNER_BLUE_HIGHLIGHT = "rgba(9,109,210,.35)";
+
+  function ensureDigitHighlightStyles(documentRoot) {
+    if (
+      !documentRoot?.head ||
+      documentRoot.querySelector?.("style[data-scf-digit-highlight-style]")
+    ) {
+      return;
+    }
+    const style = documentRoot.createElement("style");
+    style.dataset.scfDigitHighlightStyle = "true";
+    style.textContent =
+      'button[data-x][data-y][data-scf-digit-highlight="true"]{' +
+      `background-color:${AGE_BANNER_BLUE_HIGHLIGHT}!important;` +
+      "}";
+    documentRoot.head.append(style);
+  }
+
+  function applySameDigitHighlights(cells, digit, documentRoot = globalThis.document) {
+    ensureDigitHighlightStyles(documentRoot);
+    const highlightDigit = digit >= 1 && digit <= 9 ? digit : null;
+
+    for (let row = 0; row < GRID_SIZE; row += 1) {
+      for (let column = 0; column < GRID_SIZE; column += 1) {
+        const cell = cells[row][column];
+        const button = cell?.querySelector?.("button[data-x][data-y]");
+        if (!button?.dataset) {
+          continue;
+        }
+
+        const shouldHighlight =
+          highlightDigit != null && readCellValue(cell) === highlightDigit;
+        if (shouldHighlight) {
+          button.dataset.scfDigitHighlight = "true";
+        } else {
+          delete button.dataset.scfDigitHighlight;
+        }
+      }
+    }
+  }
+
   const api = Object.freeze({
+    applySameDigitHighlights,
     findPuzzleTable,
     getCandidateSpans,
     getOwnedCandidateSpans,
