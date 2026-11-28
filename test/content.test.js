@@ -87,11 +87,17 @@ function createCandidateCell() {
 }
 
 function createFilledCell(value, x, y) {
+  const button = {
+    dataset: { x: String(x), y: String(y) },
+    textContent: String(value),
+  };
   return {
+    button,
+    select() {
+      button["aria-selected"] = "true";
+    },
     querySelector(selector) {
-      return selector === "button[data-x][data-y]"
-        ? { dataset: { x: String(x), y: String(y) }, textContent: String(value) }
-        : null;
+      return selector === "button[data-x][data-y]" ? button : null;
     },
     querySelectorAll() {
       return [];
@@ -201,7 +207,16 @@ function createContentEnvironment({
     },
     querySelector(selector) {
       if (selector === "style[data-scf-digit-complete-style]") {
-        return injectedStyles[0] ?? null;
+        return (
+          injectedStyles.find((style) => style.dataset?.scfDigitCompleteStyle) ??
+          null
+        );
+      }
+      if (selector === "style[data-scf-digit-highlight-style]") {
+        return (
+          injectedStyles.find((style) => style.dataset?.scfDigitHighlightStyle) ??
+          null
+        );
       }
       return null;
     },
@@ -753,28 +768,36 @@ test("content script toggles a candidate from pencil-mode keypad input", async (
   assert.equal(cell.spans[1].textContent, "2");
 });
 
-test("content script toggles candidates with digit-first pencil clicks", async () => {
+test("content script does not auto-toggle candidates when clicking a new pencil cell", async () => {
   const environment = createContentEnvironment();
   await new Promise(queueMicrotask);
   const first = environment.cells[0][1];
   const second = environment.cells[0][2];
   enablePencilMode(environment);
 
-  // Age UX: arm digit 2, then click target cells.
   clickKeypadDigit(environment, 2);
   assert.equal(first.spans[1].textContent, "2");
 
   clickPuzzleCell(environment, first);
-  assert.equal(first.spans[1].textContent, "\u00a0");
+  assert.equal(first.spans[1].textContent, "2");
   assert.equal(second.spans[1].textContent, "2");
 
-  clickPuzzleCell(environment, second);
-  assert.equal(second.spans[1].textContent, "\u00a0");
-
-  clickKeypadDigit(environment, 8);
-  clickPuzzleCell(environment, first);
-  assert.equal(first.spans[7].textContent, "\u00a0");
+  clickKeypadDigit(environment, 2);
   assert.equal(first.spans[1].textContent, "\u00a0");
+  assert.equal(second.spans[1].textContent, "2");
+});
+
+test("content script highlights matching pen-filled digits in Age blue", async () => {
+  const environment = createContentEnvironment();
+  await new Promise(queueMicrotask);
+  environment.cells[2][4] = createFilledCell(1, 4, 2);
+  const first = environment.cells[0][0];
+  const peer = environment.cells[2][4];
+
+  clickPuzzleCell(environment, first);
+
+  assert.equal(first.button.dataset.scfDigitHighlight, "true");
+  assert.equal(peer.button.dataset.scfDigitHighlight, "true");
 });
 
 test("content script toggles a candidate from pencil-mode keyboard input", async () => {

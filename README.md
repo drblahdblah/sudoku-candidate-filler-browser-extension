@@ -39,12 +39,15 @@ The extension follows The Age **Pencil mode** button:
 1. **Gentle / easy (singletons):** leave Pencil mode off. Auto-filled candidates
    update as you place full digits for cells with only one possibility.
 2. **Intermediate / expert (pencil editing):** turn Pencil mode on, select a
-   digit on the keypad (or keyboard `1`–`9`), then click cells to hide or
-   restore that candidate—same digit-first flow as The Age UI. You can also
-   select a cell first and then press a digit. Turn Pencil mode off and fill
-   full digits when singletons remain.
+   cell (yellow highlight), then press keypad/keyboard digits (`1`–`9`) to hide
+   or restore that candidate in the selected cell. Clicking another cell only
+   changes selection—it does not auto-toggle the armed digit. Turn Pencil mode
+   off and fill full digits when singletons remain.
 3. **Hybrid:** switch Pencil mode on and off as needed—edit candidates when
    stuck, place full digits when a singleton is clear.
+
+Clicking a pen-filled digit (or selecting that digit on the keypad) highlights
+every matching filled number on the grid in The Age banner blue.
 
 When all nine copies of a digit are filled on the grid, that keypad number is
 greyed out and blocked until the puzzle is reset or one of those digits is

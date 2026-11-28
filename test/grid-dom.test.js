@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  applySameDigitHighlights,
   findPuzzleTable,
   getCandidateSpans,
   getPuzzleCells,
@@ -102,11 +103,14 @@ function createEmptyButtonCell(x, y) {
 }
 
 function createFilledCell(value, x = 0, y = 0) {
+  const button = {
+    dataset: { x: String(x), y: String(y) },
+    textContent: String(value),
+  };
   return {
+    button,
     querySelector(selector) {
-      return selector === "button[data-x][data-y]"
-        ? { dataset: { x: String(x), y: String(y) }, textContent: String(value) }
-        : null;
+      return selector === "button[data-x][data-y]" ? button : null;
     },
     querySelectorAll() {
       return [];
@@ -440,3 +444,41 @@ test("rejects malformed cell coordinate values", () => {
 
   assert.equal(findPuzzleTable(documentRoot), undefined);
 });
+
+test("highlights every pen-filled cell that contains the selected digit", () => {
+  const cells = Array.from({ length: 9 }, () =>
+    Array.from({ length: 9 }, () => createCandidateCell()),
+  );
+  cells[0][0] = createFilledCell(1, 0, 0);
+  cells[2][3] = createFilledCell(1, 3, 2);
+  cells[4][4] = createFilledCell(5, 4, 4);
+  addCoordinates(cells);
+
+  const styles = [];
+  const documentRoot = {
+    head: {
+      append(node) {
+        styles.push(node);
+      },
+    },
+    createElement(tagName) {
+      return { tagName, dataset: {}, textContent: "" };
+    },
+    querySelector(selector) {
+      return selector === "style[data-scf-digit-highlight-style]"
+        ? styles[0] ?? null
+        : null;
+    },
+  };
+
+  applySameDigitHighlights(cells, 1, documentRoot);
+
+  assert.equal(cells[0][0].button.dataset.scfDigitHighlight, "true");
+  assert.equal(cells[2][3].button.dataset.scfDigitHighlight, "true");
+  assert.equal(cells[4][4].button.dataset.scfDigitHighlight, undefined);
+  assert.match(styles[0].textContent, /9,109,210/);
+
+  applySameDigitHighlights(cells, null, documentRoot);
+  assert.equal(cells[0][0].button.dataset.scfDigitHighlight, undefined);
+});
+
